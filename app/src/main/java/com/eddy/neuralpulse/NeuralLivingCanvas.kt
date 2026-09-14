@@ -89,6 +89,7 @@ fun NeuralLivingCanvas(
     val density = LocalDensity.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var frameDt by remember { mutableFloatStateOf(0f) }
+    var barPulse by remember { mutableFloatStateOf(1f) } // BPM 锁定小节呼吸（1±0.035）
 
     // NFR：页面不可见即暂停节律，后台无遗留高频工作
     DisposableEffect(lifecycle) {
@@ -107,6 +108,7 @@ fun NeuralLivingCanvas(
         var last = 0L
         var lastBeatId = 0L
         var beatAnim = 0f
+        var barPhase = 0f
         while (isActive) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
@@ -118,6 +120,15 @@ fun NeuralLivingCanvas(
                 }
                 beatAnim *= exp(-dt * 3.2f)
                 if (beatAnim < 0.004f) beatAnim = 0f
+                // BPM 律动：有节拍时整网按小节（4 拍）胀缩一个正弦周期
+                val tau = (2.0 * Math.PI).toFloat()
+                if (f.bpm > 0f) {
+                    barPhase = (barPhase + dt * f.bpm / 60f / 4f) % 1f
+                    barPulse = 1f + 0.035f * sin(barPhase * tau)
+                } else {
+                    barPhase = 0f
+                    barPulse += (1f - barPulse) * (1f - exp(-dt * 8f))
+                }
                 // 音频驱动注入：响度抬活跃度，节拍加速时间流（场景内再积分）
                 scene.targetActivity =
                     NeuralLivingScene.ACTIVITY_REST + f.level * 1.6f + beatAnim * 0.25f
@@ -155,7 +166,10 @@ fun NeuralLivingCanvas(
         scene.setLayout(w, h)
         scene.computeWorlds()
         scene.projectAllNodes()
-        withTransform({ scale(d, d, pivot = Offset.Zero) }) {
+        withTransform({
+            scale(d, d, pivot = Offset.Zero)
+            scale(barPulse, barPulse, pivot = Offset(w / 2f, h * 0.48f))
+        }) {
             renderScene(this, scene, frameDt.coerceAtLeast(0f))
         }
     }
