@@ -26,14 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,13 +44,14 @@ import androidx.core.content.ContextCompat
 import com.eddy.neuralpulse.audio.AudioBus
 import com.eddy.neuralpulse.audio.AudioCaptureService
 import com.eddy.neuralpulse.audio.AudioFeatures
+import com.eddy.neuralpulse.audio.AudioProcessor
+import com.eddy.neuralpulse.audio.DemoSignalSource
 import kotlinx.coroutines.delay
-import kotlin.math.exp
-import kotlin.math.sin
 
 /**
  * NeuralPulse：Loyea「Neural Living」神经网模型的独立音频律动壳。
- * 模式：idle → 捕获系统音频（MediaProjection + AudioPlaybackCapture）/ 演示脉冲（内置 120BPM 合成信号）。
+ * 三种音源：系统音频捕获（MediaProjection，真机通路）/
+ *          麦克风输入（回退通路）/ 演示脉冲（合成 PCM 走真分析管线）。
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +60,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Mode { IDLE, CAPTURE, DEMO }
+private enum class Mode { IDLE, CAPTURE, MIC, DEMO }
 
 @Composable
 private fun NeuralPulseApp() {
@@ -77,45 +76,21 @@ private fun NeuralPulseApp() {
         }
     }
 
-    // 演示脉冲：内置 120BPM 合成信号，不依赖外部音源即可验证律动映射
+    // 演示脉冲：合成 120BPM PCM 喂进真正的 AudioProcessor 分析链
     LaunchedEffect(mode) {
         if (mode != Mode.DEMO) return@LaunchedEffect
-        var last = 0L
-        var t = 0f
-        var nextBeat = 0f
-        var kick = 0f
-        var beatId = 0L
-        while (true) {
-            withFrameNanos { now ->
-                val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
-                last = now
-                t += dt
-                kick *= exp(-dt * 6f)
-                if (t >= nextBeat) {
-                    kick = 1f
-                    beatId++
-                    nextBeat += 0.5f
-                }
-                AudioBus.publish(
-                    AudioFeatures(
-                        active = false,
-                        level = (0.30f + 0.55f * kick + 0.06f * sin(t * 7.3f)).coerceIn(0f, 1f),
-                        bass = kick.coerceIn(0f, 1f),
-                        mid = (0.25f + 0.2f * sin(t * 2.1f)).coerceIn(0f, 1f),
-                        treble = (0.18f + 0.16f * sin(t * 5.7f + 1f)).coerceIn(0f, 1f),
-                        beatId = beatId,
-                        beatStrength = kick,
-                        bpm = 120f,
-                        hue = 0.35f * sin(t * 0.6f),
-                        centroid = 0.3f + 0.2f * sin(t * 0.9f),
-                    )
-                )
-            }
+        val source = DemoSignalSource(48000) { hop ->
+            demoProcessor.processFrame(hop, active = false)
+        }
+        source.start()
+        try {
+            while (true) delay(1000)
+        } finally {
+            source.stopSource()
         }
     }
 
-    // ---- 捕获授权流 ----
-    // 1) 通知权限（33+，保证前台服务通知可见）；2) MediaProjection 授权 → 交给前台服务建流
+    // ---- 捕获授权流（MediaProjection）----
     val projectionIntent = remember {
         (context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager)
             ?.createScreenCaptureIntent()
@@ -124,12 +99,26 @@ private fun NeuralPulseApp() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            AudioCaptureService.start(context, result.resultCode, result.data!!)
+            AudioCaptureService.startProjection(context, result.resultCode, result.data!!)
             mode = Mode.CAPTURE
         } else {
             mode = Mode.IDLE
         }
     }
+
+    // 麦克风权限 → 启动麦克风采集
+    val micPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            AudioCaptureService.startMic(context)
+            mode = Mode.MIC
+        } else {
+            mode = Mode.IDLE
+        }
+    }
+
+    // 通知权限（33+，保证前台服务通知可见）；授权后自动继续投影流程
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -163,12 +152,23 @@ private fun NeuralPulseApp() {
                     projectionIntent?.let { projection.launch(it) }
                 }
             },
+            onStartMic = {
+                if (ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                } else {
+                    AudioCaptureService.startMic(context)
+                    mode = Mode.MIC
+                }
+            },
+            onStartDemo = { mode = Mode.DEMO },
             onStop = {
                 AudioCaptureService.stop(context)
                 AudioBus.inactive()
                 mode = Mode.IDLE
             },
-            onStartDemo = { mode = Mode.DEMO },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 34.dp)
@@ -176,7 +176,8 @@ private fun NeuralPulseApp() {
     }
 }
 
-// 媒体投影授权意图由组合内的 remember 构建（见 NeuralPulseApp）
+// 演示模式用的分析器（与捕获分析同一条 DSP 链）
+private val demoProcessor = AudioProcessor(48000)
 
 @Composable
 private fun HudPanel(
@@ -191,8 +192,9 @@ private fun HudPanel(
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         val status = when {
-            features.active -> "● 系统音频捕获中"
-            mode == Mode.DEMO -> "◐ 演示脉冲 120BPM"
+            features.active && mode == Mode.CAPTURE -> "● 系统音频捕获中"
+            features.active && mode == Mode.MIC -> "● 麦克风输入中"
+            mode == Mode.DEMO -> "◐ 演示脉冲 · 真分析管线"
             else -> "○ 待捕获系统音频"
         }
         val statusColor = when {
@@ -253,18 +255,30 @@ private fun MeterRow(label: String, value: Float, color: Color) {
 private fun Controls(
     mode: Mode,
     onStartCapture: () -> Unit,
-    onStop: () -> Unit,
+    onStartMic: () -> Unit,
     onStartDemo: () -> Unit,
+    onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         when (mode) {
             Mode.IDLE -> {
                 ActionButton("● 捕获系统音频", Color(0xFF32200D), Color(0xFFFFAF37), onStartCapture)
-                ActionButton("▷ 演示脉冲", Color(0xFF101820), Color(0xFF8AB4FF), onStartDemo)
+                ActionButton("🎙 麦克风", Color(0xFF1A1206), Color(0xFFFFC94B), onStartMic)
+                ActionButton("▷ 演示", Color(0xFF101820), Color(0xFF8AB4FF), onStartDemo)
             }
-            Mode.CAPTURE -> ActionButton("■ 停止捕获", Color(0xFF32200D), Color(0xFFFFAF37), onStop)
-            Mode.DEMO -> ActionButton("■ 停止演示", Color(0xFF101820), Color(0xFF8AB4FF), onStop)
+            else -> ActionButton(
+                "■ 停止",
+                when (mode) {
+                    Mode.DEMO -> Color(0xFF101820)
+                    else -> Color(0xFF32200D)
+                },
+                when (mode) {
+                    Mode.DEMO -> Color(0xFF8AB4FF)
+                    else -> Color(0xFFFFAF37)
+                },
+                onStop
+            )
         }
     }
 }
