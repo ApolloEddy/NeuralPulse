@@ -313,15 +313,16 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         dot(scope, warmDot, scene.nodeProjX(i), scene.nodeProjY(i), r, alpha, bright = importance > 0.82f)
     }
 
-    // 电火花：沿边游走，正弦淡入淡出；节拍提速（sparkAt 内）
+    // 电火花：沿边游走，正弦淡入淡出；节拍提速（sparkAt 内），高频让火花更亮
     for (i in 0 until scene.sparkCount()) {
         val p = scene.sparkAt(i, dt)
         val u = scene.lastSparkU
         val fade = sin(u * Math.PI.toFloat())
         val r = (1f + 0.8f * p.front) * 0.77f * p.scale
-        val alpha = (0.35f + 0.45f * p.front) * 0.73f * fade
-        dot(scope, brightDot, p.x, p.y, r * 3.0f, 0.035f * fade, bright = false)
-        dot(scope, brightDot, p.x, p.y, r * 1.8f, 0.10f * fade, bright = false)
+        val trebleBoost = 1f + 0.9f * f.treble
+        val alpha = (0.35f + 0.45f * p.front) * 0.73f * fade * trebleBoost
+        dot(scope, brightDot, p.x, p.y, r * 3.0f, 0.035f * fade * trebleBoost, bright = false)
+        dot(scope, brightDot, p.x, p.y, r * 1.8f, 0.10f * fade * trebleBoost, bright = false)
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
