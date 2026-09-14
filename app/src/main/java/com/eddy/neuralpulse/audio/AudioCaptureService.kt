@@ -40,6 +40,11 @@ class AudioCaptureService : Service() {
         private const val CHANNEL_ID = "neuralpulse_capture"
         private const val NOTIFICATION_ID = 11
 
+        /** 当前采集模式（Activity 重建时恢复 HUD 状态用）；null = 未采集。 */
+        @Volatile
+        var currentMode: String? = null
+            private set
+
         fun startProjection(context: Context, resultCode: Int, resultData: Intent) {
             val intent = Intent(context, AudioCaptureService::class.java)
                 .putExtra(EXTRA_MODE, MODE_PROJECTION)
@@ -88,6 +93,7 @@ class AudioCaptureService : Service() {
         if (analyzer != null) {
             return START_STICKY // 已在采集：忽略重复启动
         }
+        currentMode = mode
         try {
             if (mode == MODE_MIC) {
                 startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -195,6 +201,7 @@ class AudioCaptureService : Service() {
 
     override fun onDestroy() {
         teardown()
+        currentMode = null
         AudioBus.inactive()
         super.onDestroy()
     }

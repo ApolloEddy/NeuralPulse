@@ -65,7 +65,16 @@ private enum class Mode { IDLE, CAPTURE, MIC, DEMO }
 @Composable
 private fun NeuralPulseApp() {
     val context = LocalContext.current
-    var mode by remember { mutableStateOf(Mode.IDLE) }
+    // Activity 重建时从服务恢复 HUD 模式（旋转/进程内回收场景）
+    var mode by remember {
+        mutableStateOf(
+            when (AudioCaptureService.currentMode) {
+                AudioCaptureService.MODE_MIC -> Mode.MIC
+                AudioCaptureService.MODE_PROJECTION -> Mode.CAPTURE
+                else -> Mode.IDLE
+            }
+        )
+    }
     var hud by remember { mutableStateOf(AudioBus.features) }
 
     // HUD 状态轮询（分析线程写 volatile 快照，这里低频取回驱动重组）
