@@ -3,6 +3,10 @@
 把 Loyea 陪伴模式里那颗实时渲染的「Neural Living」神经网模型单拎出来，
 接上**系统正在播放的声音**，让它在音乐里呼吸、振动、变色。
 
+![忠实度对比：左=Loyea 原版 HTML，中=App 静止态，右=App 演示态](docs/screenshots/fidelity.png)
+
+![演示脉冲下的律动态](docs/screenshots/demo.png)
+
 ## 这是什么
 
 - **模型本体**：`NeuralLivingScene`（135 核心节点 + 610 外壳节点 + 度上限 5 的近邻边、
