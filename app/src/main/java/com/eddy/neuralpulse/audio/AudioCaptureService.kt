@@ -75,10 +75,8 @@ class AudioCaptureService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // 类型在 onStartCommand 依据模式确定；此处先按投影类型起前台
-        // （Android 14+ 要求投影授权结果必须由 mediaProjection 型前台服务消费），
-        // 麦克风模式随后升级前台类型即可（startForeground 可再次调用）。
-        startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        // 前台类型依赖模式，推迟到 onStartCommand 里选择；
+        // startForegroundService 的调用窗口覆盖 onCreate→onStartCommand，及时性满足要求。
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -95,6 +93,9 @@ class AudioCaptureService : Service() {
                 startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                 beginMicCapture()
             } else {
+                // Android 14+：投影授权结果必须由 mediaProjection 型前台服务消费，
+                // 因此必须在消费授权前先以该类型进入前台。
+                startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
                 val resultCode = i.getIntExtra(EXTRA_RESULT_CODE, -1)
                 @Suppress("DEPRECATION")
                 val resultData: Intent? = i.getParcelableExtra(EXTRA_RESULT_DATA)

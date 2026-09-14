@@ -34,6 +34,7 @@ class AudioProcessor(val sampleRate: Int) {
 
         private const val BEAT_REFRACTORY = 0.22f     // 节拍不应期（秒），对应 ~272BPM 上限
         private const val BPM_SILENCE_RESET = 3.0f    // 连续无拍判定静止（秒）
+        private const val NOISE_GATE_DB = -70f        // 静音门限：低于此值视为无声，不放大底噪
     }
 
     private val binHz = sampleRate.toFloat() / FFT_SIZE
@@ -89,6 +90,25 @@ class AudioProcessor(val sampleRate: Int) {
         for (v in hop) sum += v * v
         val rms = sqrt(sum / HOP)
         val levelDb = 20f * log10(rms + EPS)
+
+        // ---- 静音门限：底噪不进 AGC、不触发节拍，直接发布空特征 ----
+        if (levelDb < NOISE_GATE_DB) {
+            analysisClock += HOP.toFloat() / sampleRate
+            decayBeat()
+            if (beatId > 0 && analysisClock - lastBeatAt > BPM_SILENCE_RESET) {
+                intervalsFill = 0
+                bpm = 0f
+            }
+            AudioBus.publish(
+                AudioFeatures(
+                    active = active,
+                    beatId = beatId,
+                    bpm = bpm,
+                )
+            )
+            return
+        }
+
         val level = norm01(levelDb, LEVEL_DB_LOW, LEVEL_DB_HIGH, ::levelPeak)
 
         // ---- 加窗 FFT ----
