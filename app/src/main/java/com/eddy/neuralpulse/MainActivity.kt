@@ -47,6 +47,7 @@ import com.eddy.neuralpulse.audio.AudioFeatures
 import com.eddy.neuralpulse.audio.AudioProcessor
 import com.eddy.neuralpulse.audio.DemoSignalSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /**
  * NeuralPulse：Loyea「Neural Living」神经网模型的独立音频律动壳。
@@ -96,6 +97,12 @@ private fun NeuralPulseApp() {
             while (true) delay(1000)
         } finally {
             source.stopSource()
+            // 取消的协程里 delay 会抛 CancellationException，用 NonCancellable 跑完收尾：
+            // 等合成线程最后一帧发布完（~1 hop）再清零，避免残留特征冻结在 HUD 上
+            withContext(kotlinx.coroutines.NonCancellable) {
+                delay(120)
+                AudioBus.inactive()
+            }
         }
     }
 
