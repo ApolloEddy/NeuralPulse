@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">神经律动 NeuralPulse</string>
+    <string name="capture_channel_name">系统音频捕获</string>
+    <string name="capture_notification_title">神经律动正在捕获系统音频</string>
+    <string name="capture_notification_text">正在把正在播放的声音律动注入神经网</string>
+</resources>

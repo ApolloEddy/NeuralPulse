@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# IDE
+.idea/
+*.iml
+local.properties
+
+# 联调产物（生成的测试音频体积大，可随时用 tools/make_test_beat.py 重建）
+out/*.wav
+
+# 日志
+*.log
