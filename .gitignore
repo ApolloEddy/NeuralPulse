@@ -13,3 +13,4 @@ out/*.wav
 
 # 日志
 *.log
+out/*.mp4

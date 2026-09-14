@@ -168,9 +168,10 @@ private val LINE_COLOR = floatArrayOf(37f, 0.78f, 1.00f)
 
 private val hsvBuf = FloatArray(3)
 
-/** 依音频特征对基色做色相偏移与亮度增益（低频暖红、高频亮金）。 */
+/** 依音频特征对基色做色相偏移与亮度增益：低频（hue01>0）向暖红压，高频向亮金抬，守住暖色家族。 */
 private fun tune(base: FloatArray, hue01: Float, level: Float): Color {
-    hsvBuf[0] = base[0] + hue01 * 50f
+    val shift = -hue01 * (if (hue01 > 0f) 30f else 14f)
+    hsvBuf[0] = base[0] + shift
     hsvBuf[1] = base[1]
     hsvBuf[2] = (base[2] * (1f + 0.12f * level)).coerceAtMost(1f)
     return Color(android.graphics.Color.HSVToColor(hsvBuf))

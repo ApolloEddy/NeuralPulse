@@ -75,8 +75,8 @@ class AudioProcessor(val sampleRate: Int) {
     private var intervalsFill = 0
     private var bpm = 0f
 
-    /** 诊断日志开关（联调用；构建间可置 false）。 */
-    private val beatDebug = true
+    /** 诊断日志开关（联调用）。 */
+    private val beatDebug = false
     private var debugCount = 0
 
     /** 处理一帧 hop 采样（HOP 个 float）。 */

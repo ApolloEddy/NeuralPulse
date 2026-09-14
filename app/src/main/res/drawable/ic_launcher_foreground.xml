@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 神经律动图标：暖金神经元团 + 电火花，呼应 Loyea Neural Living 的加性混色视觉 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 底色暗夜 -->
+    <path android:fillColor="#FF050608"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- 径向暖光晕（近似） -->
+    <path android:fillColor="#FF32200D"
+        android:fillAlpha="0.9"
+        android:pathData="M54,54m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
+    <!-- 边（近邻连线） -->
+    <path android:strokeColor="#FFFFB338" android:strokeAlpha="0.8" android:strokeWidth="1"
+        android:pathData="M38,42L50,36L62,44L70,40M38,42L44,54L50,36M44,54L58,58L62,44M58,58L66,52L70,40M44,54L40,66L52,70L58,58M52,70L64,66L66,52M40,66L46,76L58,74L52,70" />
+    <!-- 核心节点 -->
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M38,42m-2.6,0a2.6,2.6 0,1 1,5.2 0a2.6,2.6 0,1 1,-5.2 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M50,36m-3.1,0a3.1,3.1 0,1 1,6.2 0a3.1,3.1 0,1 1,-6.2 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M62,44m-2.4,0a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M70,40m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M44,54m-3.3,0a3.3,3.3 0,1 1,6.6 0a3.3,3.3 0,1 1,-6.6 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M58,58m-2.8,0a2.8,2.8 0,1 1,5.6 0a2.8,2.8 0,1 1,-5.6 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M66,52m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M40,66m-2.6,0a2.6,2.6 0,1 1,5.2 0a2.6,2.6 0,1 1,-5.2 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M52,70m-3.0,0a3.0,3.0 0,1 1,6.0 0a3.0,3.0 0,1 1,-6.0 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M46,76m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M64,66m-2.4,0a2.4,2.4 0,1 1,4.8 0a2.4,2.4 0,1 1,-4.8 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M46,34m-1.8,0a1.8,1.8 0,1 1,3.6 0a1.8,1.8 0,1 1,-3.6 0" />
+    <path android:fillColor="#FFFFAF37"
+        android:pathData="M72,48m-1.8,0a1.8,1.8 0,1 1,3.6 0a1.8,1.8 0,1 1,-3.6 0" />
+    <!-- 亮色电火花 -->
+    <path android:fillColor="#FFFFE4AF"
+        android:pathData="M50,36m-1.2,0a1.2,1.2 0,1 1,2.4 0a1.2,1.2 0,1 1,-2.4 0" />
+    <path android:fillColor="#FFFFE4AF"
+        android:pathData="M44,54m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0" />
+    <path android:fillColor="#FFFFE4AF"
+        android:pathData="M52,70m-1.2,0a1.2,1.2 0,1 1,2.4 0a1.2,1.2 0,1 1,-2.4 0" />
+    <!-- 核心余烬 -->
+    <path android:fillColor="#FFFFEBBD" android:fillAlpha="0.9"
+        android:pathData="M52,52m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>
