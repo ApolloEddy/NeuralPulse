@@ -10,8 +10,8 @@ import kotlin.math.sqrt
 /**
  * 「Loyea Neural Living」神经元核心场景模型。
  *
- * 移植自 Loyea 陪伴模式 plugins/companion/.../NeuralLiving.kt（其本身为
- * docs/Loyea-Neural-Companion-v2.html 内嵌 canvas 的逐行移植）：
+ * 移植自 Loyea（同作者的私有项目）陪伴模式的 Neural Living 实时渲染组件，
+ * 视觉原型为配套演示页内嵌 canvas 的逐行移植：
  * 同一 LCG 随机种子(91237)、同一拓扑(135 核心节点 + 610 外壳节点 + 度上限 5 的近邻边、
  * 28 条三锚点桥接路径、2 组直立轨道弧线各 3 段、30 尘埃、36 电火花)、同一五层呼吸帧与漂移场。
  *

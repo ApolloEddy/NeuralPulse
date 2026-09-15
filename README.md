@@ -1,56 +1,56 @@
 # NeuralPulse · 神经律动
 
-把 Loyea 陪伴模式里那颗实时渲染的「Neural Living」神经网模型单拎出来，
-接上**系统正在播放的声音**，让它在音乐里呼吸、振动、变色。
+> **本项目是服务于 [Loyea](#关于-loyea) 的测试项目**：把 Loyea 陪伴模式里那颗实时渲染的
+> 「Neural Living」神经网模型单拎出来，验证它接上**系统正在播放的声音**后的
+> 音频可视化响应能力。它是一个技术试验场，不是独立产品。
 
-![忠实度对比：左=Loyea 原版 HTML，中=App 静止态，右=App 演示态](docs/screenshots/fidelity.png)
+![忠实度对比：左=Loyea 原版模型，中=App 静止态，右=App 演示态](docs/screenshots/fidelity.png)
 
 ![演示脉冲下的律动态](docs/screenshots/demo.png)
 
 ## 这是什么
 
-- **模型本体**：`NeuralLivingScene`（135 核心节点 + 610 外壳节点 + 度上限 5 的近邻边、
-  28 条三锚点桥接路径、2 组直立轨道弧线、30 尘埃、36 电火花），
-  逐行移植自 Loyea 陪伴模式的 `NeuralLiving.kt` / `NeuralLivingCanvas.kt`
-  （源头是 `docs/Loyea-Neural-Companion-v2.html` 的内嵌 canvas）。
-  同一 LCG 随机种子(91237)，视觉基因完全保留：暖金加性混色、五层呼吸帧、
-  漂移场、电火花沿边游走、可拖拽视角。
-- **音频律动**（本次新增的全部内容）：
+- **模型本体**：`NeuralLivingScene` —— 一颗由 135 个核心节点 + 610 个外壳节点组成的
+  神经体积（度上限 5 的近邻边、28 条三锚点桥接路径、2 组直立轨道弧线、30 尘埃、
+  36 电火花），逐行移植自 Loyea 陪伴模式的 Neural Living 渲染组件，视觉基因完整保留：
+  暖金加性混色、五层呼吸帧、漂移场、电火花沿边游走、可拖拽视角。
+- **音频律动**（本项目新增的全部内容）：
+
   | 音频特征 | 视觉映射 |
   | --- | --- |
   | 响度 RMS（AGC 归一） | 活跃度（静伴→倾听→思考之外再向上）、呼吸/漂移振幅、整体增辉 |
   | 节拍（谱通量自适应阈值） | 时间流瞬时加速、电火花提速、核心冲击波光环、节点半径脉冲 |
-  | BPM（拍间隔中位数 + 倍速折叠） | HUD 实时显示；律动随节拍同步 |
-  | 低/中/高频段能量 | 色相偏移（低频暖红、高频亮金）+ HUD 频段条 |
+  | BPM（拍间隔中位数 + 倍速折叠） | HUD 实时显示 + 整网按小节（4 拍）正弦胀缩 |
+  | 低/中/高频段能量 | 色相偏移（低频偏暖红、高频偏亮金）+ HUD 频段条 |
   | 谱重心 | 色相微调的第二输入 |
+
+## 关于 Loyea
+
+NeuralPulse 是 Loyea 的配套测试项目，用于在脱离 Loyea 宿主的独立环境里验证
+Neural Living 模型的「音频响应」扩展是否成立，验证通过的经验会反哺 Loyea。
+Loyea 本体为私有项目，本仓库只包含移植后的模型与音频管线，不包含 Loyea 的
+业务代码与资源。
+
+无音频输入时，场景逐帧行为与 Loyea 原版**完全一致**——所有音频调制都是乘法
+增益项，不改变拓扑、种子、层帧定值与漂移场的任何基础常数。
+
+## 三种音源模式
+
+| 模式 | 通路 | 适用 |
+| --- | --- | --- |
+| **● 捕获系统音频** | MediaProjection 授权 → `AudioPlaybackCapture`（USAGE_MEDIA/GAME/UNKNOWN） | 真机（Android 10+）。系统弹窗里选 **Share entire screen**。抓的是混音后送往扬声器/耳机的输出流（非麦克风），任何在出声的 App 都会被律动捕捉；个别 App 可通过捕获策略拒绝 |
+| **🎙 麦克风** | `VOICE_RECOGNITION` 源直采 | 回退通路：真机外放拾音；模拟器上映射到宿主输入设备。内置 -70dB 静音门限，安静环境不放大底噪 |
+| **▷ 演示** | 合成 120BPM PCM（底鼓+踩镲+贝斯）→ **同一条 FFT/节拍/BPM 分析链** | 无外部音源时验证整条管线；HUD 的 BPM≈117-120 即分析器的端到端证明 |
+
+本 App 自身不出声、不落盘任何音频；拖动画面可换视角。
 
 ## 系统音频从哪来
 
-Android 10(API 29)+ 的 `AudioPlaybackCapture`：用户通过 MediaProjection 授权后，
+`AudioPlaybackCapture`（Android 10/API 29+）：用户通过 MediaProjection 授权后，
 前台服务（`foregroundServiceType="mediaProjection"`）持有
 `AudioPlaybackCaptureConfiguration`（USAGE_MEDIA/GAME/UNKNOWN）建的 `AudioRecord`，
 浮点 PCM 48kHz → 2048 点汉宁窗 FFT（50% 重叠）→ 响度/频段/谱通量 → 特征快照
 经 volatile 总线（`AudioBus`）进渲染帧，零锁、零重组。
-
-任何正在出声的 App（视频、音乐、游戏）都会被律动捕捉；本 App 自己不出声。
-
-## 跑起来
-
-```bash
-# Android Studio 直接打开，或：
-./gradlew :app:assembleDebug
-adb install -r -g app/build/outputs/apk/debug/app-debug.apk
-```
-
-三种音源模式：
-
-| 模式 | 通路 | 适用 |
-| --- | --- | --- |
-| **● 捕获系统音频** | MediaProjection 授权 → `AudioPlaybackCapture`（USAGE_MEDIA/GAME/UNKNOWN） | 真机（Android 10+）。系统弹窗里选 **Share entire screen**。任何在出声的 App 都会被律动捕捉 |
-| **🎙 麦克风** | `VOICE_RECOGNITION` 源直采 | 回退通路：真机外放拾音；模拟器上映射到宿主输入设备 |
-| **▷ 演示** | 合成 120BPM PCM（底鼓+踩镲+贝斯）→ **同一条 FFT/节拍/BPM 分析链** | 无外部音源时验证整条管线；HUD 的 BPM≈117-120 即分析器的端到端证明 |
-
-本 App 自身不出声；拖动画面可换视角。
 
 ### 模拟器注意（goldfish HAL 限制）
 
@@ -60,6 +60,15 @@ adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 混音数据，所以播放捕获读到的是数字静音（分析器日志 `rms=0.0`，诊断代码内置）。
 真机没有这个问题——录屏 App 带音轨走的就是同一条通路。
 在模拟器上验证分析管线请用「▷ 演示」模式：它喂给分析器的是真实合成的 PCM。
+
+## 跑起来
+
+```bash
+# Android Studio 直接打开，或：
+./gradlew :app:assembleDebug
+adb install -r -g app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testDebugUnitTest   # DSP 核心 JVM 测试（FFT / 节拍→BPM / 静音门限）
+```
 
 ### 联调工具
 
@@ -87,14 +96,7 @@ app/src/main/java/com/eddy/neuralpulse/
     └── AudioCaptureService.kt  # 前台服务：mediaProjection / microphone 双类型
 ```
 
-构建链路对齐 Loyea 宿主：Gradle 8.13（腾讯镜像）/ AGP 8.13.2 / Kotlin 1.9.22 /
-Compose BOM 2024.02.00 / JDK 17。
-
-## Loyea 忠实度说明
-
-`setAudioDrive(level, beat)` 两参数均为 0 时（无音频、非演示态），
-场景逐帧行为与 Loyea 原版**完全一致**——所有音频调制都是乘法增益项，
-不改变拓扑、种子、层帧定值与漂移场的任何基础常数。
+构建链路：Gradle 8.13 / AGP 8.13.2 / Kotlin 1.9.22 / Compose BOM 2024.02.00 / JDK 17。
 
 ## Roadmap
 
@@ -102,3 +104,7 @@ Compose BOM 2024.02.00 / JDK 17。
 - [x] 麦克风回退通路（含静音门限，安静环境不放大底噪）
 - [ ] 频谱驱动的边亮度分层（当前边亮度取全局响度）
 - [ ] 直通模式下的更慢 AGC 峰值回落（自动曝光感）
+
+## 授权说明
+
+本项目为 Loyea 的内部测试项目，仅供学习与配套测试使用，未附开源许可证。
