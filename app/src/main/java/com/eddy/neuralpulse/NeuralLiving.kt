@@ -196,7 +196,7 @@ class NeuralLivingScene {
         s.hops = 0
         // 路径长短跟随音乐能量：安静时短途，响时长途
         s.maxHops = 6 + (rand() * 8).toInt() + (spawnEnergy * 24).toInt()
-        s.speed = (1.6f + rand() * 1.2f) * (0.7f + spawnEnergy * 0.9f)
+        s.speed = (1.1f + rand() * 0.7f) * (0.75f + spawnEnergy * 0.55f)
         s.alive = true
     }
 

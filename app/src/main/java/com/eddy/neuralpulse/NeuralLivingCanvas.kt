@@ -359,7 +359,7 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
     scene.advanceSignals(
         dt,
         spawn = 0.4f + 1.5f * f.level + 3.5f * beat,
-        speedMul = 0.8f + 0.8f * f.level + 1.0f * beat + 0.4f * bpmNorm,
+        speedMul = 0.85f + 0.45f * f.level + 0.5f * beat + 0.25f * bpmNorm,
         energy = energy
     )
     val ends = FloatArray(4)
