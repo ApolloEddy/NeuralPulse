@@ -3,6 +3,7 @@ package com.eddy.neuralpulse
 import kotlin.math.acos
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -222,16 +223,29 @@ class NeuralLivingScene {
             s.u += dt * s.speed * speedMul
             if (s.u >= 1f) {
                 val arrived = otherEnd(s.edge, s.from)
+                // 路径规划：带动量的转向——优先延续当前行进方向，减少拐线与回头
+                val dirX = worldX[arrived] - worldX[s.from]
+                val dirY = worldY[arrived] - worldY[s.from]
+                val dirLen = sqrt(dirX * dirX + dirY * dirY)
                 s.from = arrived
                 s.hops++
                 val opts = nodeEdges[arrived]
-                if (s.hops >= s.maxHops || opts.isEmpty()) {
+                var next = -1
+                var best = -Float.MAX_VALUE
+                for (cand in opts) {
+                    if (cand == s.edge && opts.size > 1) continue // 尽量不原路返回
+                    val other2 = otherEnd(cand, arrived)
+                    val cdx = worldX[other2] - worldX[arrived]
+                    val cdy = worldY[other2] - worldY[arrived]
+                    val clen = sqrt(cdx * cdx + cdy * cdy)
+                    if (clen <= 0f) continue
+                    val align = (cdx * dirX + cdy * dirY) / (clen * max(dirLen, 1e-6f))
+                    val score = align + rand() * 0.9f // 保留随机性，偶尔拐弯更自然
+                    if (score > best) { best = score; next = cand }
+                }
+                if (s.hops >= s.maxHops || next == -1) {
                     s.alive = false
                 } else {
-                    var next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
-                    if (next == s.edge && opts.size > 1) {
-                        next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
-                    }
                     s.edge = next
                     s.u = 0f
                 }

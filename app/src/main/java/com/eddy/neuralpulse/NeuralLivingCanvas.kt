@@ -373,13 +373,28 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         val ax = ends[0]; val ay = ends[1]
         val dx = ends[2] - ax; val dy = ends[3] - ay
 
-        // 所过连线发光：从出发节点到当前头部，随信号经过而亮起（响度越亮）
-        val glow = (0.08f + 0.14f * beat + 0.08f * f.level) * fade
-        drawSegment(scope, lineColor, ax, ay, ax + dx * headU, ay + dy * headU,
-            alpha = glow, width = 0.8f, f = headU)
+        // 路径高亮：已走过的与即将走的轻微点亮，越靠近脉冲越亮（线性渐变）
+        val hx = ax + dx * headU; val hy = ay + dy * headU
+        val glowNear = ((0.05f + 0.10f * beat + 0.05f * f.level) * fade).coerceAtMost(0.30f)
+        val glowFar = glowNear * 0.22f
+        scope.drawLine(
+            brush = Brush.linearGradient(
+                listOf(lineColor.copy(alpha = glowFar), lineColor.copy(alpha = glowNear)),
+                start = Offset(ax, ay), end = Offset(hx, hy)
+            ),
+            start = Offset(ax, ay), end = Offset(hx, hy),
+            strokeWidth = 0.9f, blendMode = BlendMode.Plus
+        )
+        scope.drawLine(
+            brush = Brush.linearGradient(
+                listOf(lineColor.copy(alpha = glowNear), lineColor.copy(alpha = glowFar)),
+                start = Offset(hx, hy), end = Offset(ax + dx, ay + dy)
+            ),
+            start = Offset(hx, hy), end = Offset(ax + dx, ay + dy),
+            strokeWidth = 0.9f, blendMode = BlendMode.Plus
+        )
 
         // 亮头 + 短促锐利的拖尾
-        val hx = ax + dx * headU; val hy = ay + dy * headU
         val hr = (1.0f + 0.7f * headU) * (0.7f + 0.5f * headU)
         var k = 4
         while (k >= 1) {
