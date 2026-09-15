@@ -193,11 +193,8 @@ class NeuralLivingScene {
         s.from = if (rand() < 0.5f) edges[s.edge * 2] else edges[s.edge * 2 + 1]
         s.u = 0f
         s.hops = 0
-        s.maxHops = 12 + (rand() * 46).toInt()   // 一生跑 12~58 个节点段
-        s.speed = 0.9f + rand() * 0.9f
-        s.length = 0.18f + rand() * 0.3f
-        s.phase = rand() * TAU
-        s.strength = 1f
+        s.maxHops = 10 + (rand() * 30).toInt()   // 高速窜行 10~40 段连线
+        s.speed = 2.2f + rand() * 2.3f           // 每秒 2~4.5 段：电影式高速突触放电
         s.alive = true
     }
 
@@ -224,10 +221,8 @@ class NeuralLivingScene {
                 val arrived = otherEnd(s.edge, s.from)
                 s.from = arrived
                 s.hops++
-                // 亮度随路程缓慢衰减：跑十几到几十个节点后才消散
-                s.strength *= 0.88f + rand() * 0.10f
                 val opts = nodeEdges[arrived]
-                if (s.hops >= s.maxHops || s.strength < 0.14f || opts.isEmpty()) {
+                if (s.hops >= s.maxHops || opts.isEmpty()) {
                     s.alive = false
                 } else {
                     var next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
@@ -240,6 +235,10 @@ class NeuralLivingScene {
             }
         }
     }
+
+    /** 末端淡出系数：生命最后 6 跳渐隐（1=正常，0=消散）。 */
+    fun signalFade(i: Int): Float =
+        min(1f, (signals[i].maxHops - signals[i].hops) / 6f)
 
     fun signalMax() = SIGNAL_MAX
     fun signalAlive(i: Int) = signals[i].alive

@@ -352,55 +352,43 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
-    // 神经脉冲：线性电波——正弦波形以连续曲线挂在连线上沿线传播，到节点后逐跳路由。
-    // 数量随响度+节拍、传播速度随响度/节拍/BPM、波幅随响度与强度、亮度随高频闪烁
+    // 神经脉冲：突触放电——高速亮光沿连线窜过，所过之处连线短暂发光，
+    // 随机四处发射、鼓点时成簇爆发；生命末端渐隐消散（奥创式神经放电）
     val bpmNorm = ((f.bpm - 80f) / 80f).coerceIn(0f, 1f)
     scene.advanceSignals(
         dt,
-        spawn = 0.08f + 0.9f * f.level + 1.6f * beat,
-        speedMul = 1f + 0.5f * f.level + 0.4f * beat + 0.3f * bpmNorm
+        spawn = 1.2f + 2.5f * f.level + 6f * beat + 2f * bpmNorm,
+        speedMul = 1f + 0.4f * f.level + 0.35f * beat + 0.25f * bpmNorm
     )
     val ends = FloatArray(4)
-    val tau = (2.0 * Math.PI).toFloat()
     for (i in 0 until scene.signalMax()) {
         if (!scene.signalAlive(i)) continue
-        val phase = scene.signalPhase(i)
         val headU = scene.signalHeadU(i)
-        val strength = scene.signalStrength(i)
-        val flick = 1f + 0.25f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
-        val ampBase = (0.5f + 0.5f * f.level) * flick * strength
+        val fade = scene.signalFade(i)
+        val flick = 0.85f + 0.3f * f.treble * sin(scene.time * 13f + i * 2.3f)
 
         scene.signalEndPoints(i, ends)
         val ax = ends[0]; val ay = ends[1]
         val dx = ends[2] - ax; val dy = ends[3] - ay
-        val lenPx = sqrt(dx * dx + dy * dy)
-        if (lenPx < 14f) continue
-        val ux = dx / lenPx; val uy = dy / lenPx
-        val px = -uy; val py = ux                       // 连线法向（电波位移方向）
-        val samples = (lenPx / 7f).toInt().coerceIn(12, 26)
-        val wavelength = lenPx / 2.8f                   // 约 2~3 个波峰挂在一条边上
-        val ampPx = min(lenPx * 0.085f, 5f + 13f * strength) * (0.45f + 0.55f * f.level)
 
-        val kProp = scene.time * 9f + phase * 10f       // 行波相位：随时间向头部方向传播
-        wavePath.reset()
-        for (j in 0..samples) {
-            val fr = j.toFloat() / samples
-            // 端点轻收拢，避免波形在节点处生硬相交
-            val taper = 0.35f + 0.65f * sin(fr * Math.PI.toFloat())
-            val disp = ampPx * taper * sin(tau * (fr * lenPx / wavelength) - kProp)
-            val x = ax + dx * fr + px * disp
-            val y = ay + dy * fr + py * disp
-            if (j == 0) wavePath.moveTo(x, y) else wavePath.lineTo(x, y)
+        // 所过连线发光：从出发节点到当前头部，随信号经过而亮起
+        val glow = 0.10f + 0.12f * beat * fade
+        drawSegment(scope, lineColor, ax, ay, ax + dx * headU, ay + dy * headU,
+            alpha = glow, width = 0.8f, f = headU)
+
+        // 亮头 + 短促锐利的拖尾
+        val hx = ax + dx * headU; val hy = ay + dy * headU
+        val hr = (1.0f + 0.7f * headU) * (0.7f + 0.5f * headU)
+        var k = 4
+        while (k >= 1) {
+            val back = k * 0.055f
+            val tp = scene.signalProj(i, back)
+            val tfade = fade * (1f - k / 5f)
+            dot(scope, warmDot, tp.x, tp.y, (1.4f - 0.18f * k) * tp.scale, 0.35f * tfade * flick, bright = false)
+            k--
         }
-        // 两层描边：宽光晕 + 细亮芯，构成连续发光电波
-        scope.drawPath(wavePath, lineColor, alpha = (0.10f * ampBase * strength).coerceAtMost(0.5f),
-            style = Stroke(width = 3.4f), blendMode = BlendMode.Plus)
-        scope.drawPath(wavePath, brightDot, alpha = (0.30f * ampBase * strength).coerceAtMost(0.8f),
-            style = Stroke(width = 1.1f), blendMode = BlendMode.Plus)
-        // 信号头部亮子：标示波前位置
-        val hx = ax + dx * headU
-        val hy = ay + dy * headU
-        dot(scope, brightDot, hx, hy, 1.1f, 0.7f * ampBase * strength, bright = true)
+        dot(scope, warmDot, hx, hy, 1.8f * hr * 0.9f, 0.25f * fade * flick, bright = false)
+        dot(scope, brightDot, hx, hy, 1.1f * hr, 0.95f * fade * flick, bright = true)
     }
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）
