@@ -158,10 +158,11 @@ class NeuralLivingScene {
         var alive = false
     }
 
-    private val SIGNAL_MAX = 30
+    private val SIGNAL_MAX = 12
     private val signals = Array(SIGNAL_MAX) { Signal() }
     private var nodeEdges: Array<IntArray> = arrayOf()
     private var spawnAccum = 0f
+    private var spawnEnergy = 0.5f   // 生成时的音乐能量（决定旅程长短）
 
     init {
         buildNucleus()
@@ -193,8 +194,9 @@ class NeuralLivingScene {
         s.from = if (rand() < 0.5f) edges[s.edge * 2] else edges[s.edge * 2 + 1]
         s.u = 0f
         s.hops = 0
-        s.maxHops = 10 + (rand() * 30).toInt()   // 高速窜行 10~40 段连线
-        s.speed = 2.2f + rand() * 2.3f           // 每秒 2~4.5 段：电影式高速突触放电
+        // 路径长短跟随音乐能量：安静时短途，响时长途
+        s.maxHops = 6 + (rand() * 8).toInt() + (spawnEnergy * 24).toInt()
+        s.speed = (1.6f + rand() * 1.2f) * (0.7f + spawnEnergy * 0.9f)
         s.alive = true
     }
 
@@ -203,7 +205,8 @@ class NeuralLivingScene {
      * 1~3 跳后消散。spawn 为生成速率（次/秒），speedMul 为流速倍率——
      * 均由渲染层依据响度/节拍/BPM 实时传入。
      */
-    fun advanceSignals(dt: Float, spawn: Float, speedMul: Float) {
+    fun advanceSignals(dt: Float, spawn: Float, speedMul: Float, energy: Float) {
+        spawnEnergy = energy.coerceIn(0f, 1f)
         spawnAccum += spawn * dt
         var alive = 0
         for (s in signals) if (s.alive) alive++

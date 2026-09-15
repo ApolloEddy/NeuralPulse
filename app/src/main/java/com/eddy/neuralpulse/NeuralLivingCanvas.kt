@@ -355,10 +355,12 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
     // 神经脉冲：突触放电——高速亮光沿连线窜过，所过之处连线短暂发光，
     // 随机四处发射、鼓点时成簇爆发；生命末端渐隐消散（奥创式神经放电）
     val bpmNorm = ((f.bpm - 80f) / 80f).coerceIn(0f, 1f)
+    val energy = ((f.level + f.bass) * 0.5f).coerceIn(0f, 1f)
     scene.advanceSignals(
         dt,
-        spawn = 1.2f + 2.5f * f.level + 6f * beat + 2f * bpmNorm,
-        speedMul = 1f + 0.4f * f.level + 0.35f * beat + 0.25f * bpmNorm
+        spawn = 0.4f + 1.5f * f.level + 3.5f * beat,
+        speedMul = 0.8f + 0.8f * f.level + 1.0f * beat + 0.4f * bpmNorm,
+        energy = energy
     )
     val ends = FloatArray(4)
     for (i in 0 until scene.signalMax()) {
@@ -371,8 +373,8 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         val ax = ends[0]; val ay = ends[1]
         val dx = ends[2] - ax; val dy = ends[3] - ay
 
-        // 所过连线发光：从出发节点到当前头部，随信号经过而亮起
-        val glow = 0.10f + 0.12f * beat * fade
+        // 所过连线发光：从出发节点到当前头部，随信号经过而亮起（响度越亮）
+        val glow = (0.08f + 0.14f * beat + 0.08f * f.level) * fade
         drawSegment(scope, lineColor, ax, ay, ax + dx * headU, ay + dy * headU,
             alpha = glow, width = 0.8f, f = headU)
 
@@ -384,11 +386,11 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
             val back = k * 0.055f
             val tp = scene.signalProj(i, back)
             val tfade = fade * (1f - k / 5f)
-            dot(scope, warmDot, tp.x, tp.y, (1.4f - 0.18f * k) * tp.scale, 0.35f * tfade * flick, bright = false)
+            dot(scope, warmDot, tp.x, tp.y, (1.4f - 0.18f * k) * tp.scale, (0.28f * tfade * flick) * (0.5f + 0.5f * f.level), bright = false)
             k--
         }
-        dot(scope, warmDot, hx, hy, 1.8f * hr * 0.9f, 0.25f * fade * flick, bright = false)
-        dot(scope, brightDot, hx, hy, 1.1f * hr, 0.95f * fade * flick, bright = true)
+        dot(scope, warmDot, hx, hy, 1.8f * hr * 0.9f, (0.22f * fade * flick) * (0.5f + 0.5f * f.level), bright = false)
+        dot(scope, brightDot, hx, hy, 1.1f * hr, (0.95f * fade * flick) * (0.55f + 0.45f * f.level), bright = true)
     }
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）
