@@ -115,7 +115,10 @@ class AudioProcessor(val sampleRate: Int) {
         for (i in 0 until FFT_SIZE) fftRe[i] = windowBuf[i] * hann[i]
         fftIm.fill(0f)
         fft.transform(fftRe, fftIm)
-        for (i in mags.indices) mags[i] = sqrt(fftRe[i] * fftRe[i] + fftIm[i] * fftIm[i])
+        // 幅值按窗长归一（×4/N，汉宁窗相干增益补偿）：满幅正弦的谱峰 ≈ 其时域幅值(0..1)，
+        // 使频段 dB 落在设计窗内，不随 FFT 长度漂移
+        val magScale = 4f / FFT_SIZE
+        for (i in mags.indices) mags[i] = sqrt(fftRe[i] * fftRe[i] + fftIm[i] * fftIm[i]) * magScale
 
         // ---- 频段能量 → dB → AGC ----
         val bass = bandNorm(bassBins, BASS_DB_LOW, BASS_DB_HIGH, ::bassPeak)
@@ -189,7 +192,8 @@ class AudioProcessor(val sampleRate: Int) {
         mean /= fluxFill
 
         val sinceLast = analysisClock - lastBeatAt
-        val threshold = mean * 1.45f + 0.002f
+        // 阈值 = 滑窗均值×1.45 + 相对量程的小 epsilon（归一化幅值下的噪声护垫）
+        val threshold = mean * 1.45f + 2e-5f
         if (flux > threshold && sinceLast > BEAT_REFRACTORY) {
             if (beatId > 0 && sinceLast in 0.25f..1.25f) pushInterval(sinceLast)
             lastBeatAt = analysisClock

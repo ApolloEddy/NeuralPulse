@@ -109,6 +109,8 @@ fun NeuralLivingCanvas(
         var lastBeatId = 0L
         var beatAnim = 0f
         var barPhase = 0f
+        var smoothLevel = 0f
+        var smoothBeat = 0f
         while (isActive) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1_000_000_000f).coerceAtMost(0.05f)
@@ -118,21 +120,26 @@ fun NeuralLivingCanvas(
                     lastBeatId = f.beatId
                     if (f.beatStrength > beatAnim) beatAnim = f.beatStrength
                 }
-                beatAnim *= exp(-dt * 3.2f)
+                beatAnim *= exp(-dt * 2.4f)
                 if (beatAnim < 0.004f) beatAnim = 0f
-                // BPM 律动：有节拍时整网按小节（4 拍）胀缩一个正弦周期
+                // 平滑包络：快起慢落，律动才丝滑不僵硬
+                smoothLevel += (f.level - smoothLevel) *
+                    (1f - exp(-dt * (if (f.level > smoothLevel) 10f else 2.5f)))
+                smoothBeat += (f.beatStrength - smoothBeat) *
+                    (1f - exp(-dt * (if (f.beatStrength > smoothBeat) 18f else 2f)))
+                // BPM 律动：有节拍时整网按小节（4 拍）轻微胀缩
                 val tau = (2.0 * Math.PI).toFloat()
                 if (f.bpm > 0f) {
                     barPhase = (barPhase + dt * f.bpm / 60f / 4f) % 1f
-                    barPulse = 1f + 0.035f * sin(barPhase * tau)
+                    barPulse = 1f + 0.02f * sin(barPhase * tau)
                 } else {
                     barPhase = 0f
                     barPulse += (1f - barPulse) * (1f - exp(-dt * 8f))
                 }
-                // 音频驱动注入：响度抬活跃度，节拍加速时间流（场景内再积分）
+                // 音频驱动注入（平滑后的值）：轻微抬活跃度、加速时间流
                 scene.targetActivity =
-                    NeuralLivingScene.ACTIVITY_REST + f.level * 1.6f + beatAnim * 0.25f
-                scene.setAudioDrive(f.level, beatAnim)
+                    NeuralLivingScene.ACTIVITY_REST + smoothLevel * 1.1f + smoothBeat * 0.12f
+                scene.setAudioDrive(smoothLevel, smoothBeat)
                 scene.advance(if (scene.paused) 0f else dt)
                 frameDt = if (scene.paused) 0f else dt
             }
@@ -182,12 +189,12 @@ private val LINE_COLOR = floatArrayOf(37f, 0.78f, 1.00f)
 
 private val hsvBuf = FloatArray(3)
 
-/** 依音频特征对基色做色相偏移与亮度增益：低频（hue01>0）向暖红压，高频向亮金抬，守住暖色家族。 */
+/** 依音频特征对基色做色相偏移与亮度增益：轻微漂移——低频向暖红压一点，高频向亮金抬一点。 */
 private fun tune(base: FloatArray, hue01: Float, level: Float): Color {
-    val shift = -hue01 * (if (hue01 > 0f) 30f else 14f)
+    val shift = -hue01 * (if (hue01 > 0f) 10f else 5f)
     hsvBuf[0] = base[0] + shift
     hsvBuf[1] = base[1]
-    hsvBuf[2] = (base[2] * (1f + 0.12f * level)).coerceAtMost(1f)
+    hsvBuf[2] = (base[2] * (1f + 0.06f * level)).coerceAtMost(1f)
     return Color(android.graphics.Color.HSVToColor(hsvBuf))
 }
 
@@ -236,7 +243,7 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
             scope, lineColor,
             scene.nodeProjX(a), scene.nodeProjY(a),
             scene.nodeProjX(b), scene.nodeProjY(b),
-            alpha = 0.16f * (1f + 0.45f * level), width = 0.55f, f = fr
+            alpha = 0.16f * (1f + 0.2f * level), width = 0.55f, f = fr
         )
         e += 2
     }
@@ -297,55 +304,80 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         }
     }
 
-    // 节点：亮度与半径随深度与重要度呼吸；响度整体增辉
+    // 节点：亮度与半径随深度与重要度呼吸；响度轻微增辉。
+    // 神经脉冲：节拍时亮度波从核心沿网络向外传播（按节点离心距离延迟），
+    // 高频能量驱动光点明暗闪烁——整体保持轻微、丝滑
+    val pulse = scene.audioBeat
+    val cx = scene.centerX()
+    val cy = scene.centerY()
+    val maxDist = min(w, h) * 0.42f
+    val flicker = 1f + 0.35f * f.treble
     for (i in 0 until scene.nodeCount) {
         val fr = scene.nodeProjFront(i)
         val phase = scene.nodePhaseAt(i)
         val importance = scene.nodeImportanceAt(i)
         val alpha = (0.24f + 0.58f * fr) * (0.88f + 0.12f * sin(scene.time * 1.7f + phase)) * 0.88f *
-            (1f + 0.35f * level)
+            (1f + 0.15f * level)
         val r = (0.58f + importance * 0.65f) * (0.8f + 0.4f * fr) * scene.nodeProjScale(i) *
-            (1f + 0.10f * beat)
+            (1f + 0.03f * pulse)
+        val x = scene.nodeProjX(i)
+        val y = scene.nodeProjY(i)
+        // 离心距离决定脉冲波前到达时刻：行波亮度增益（高斯包络，随 beat 衰减自然消退）
+        val dist = kotlin.math.hypot(x - cx, y - cy) / maxDist
+        val waveFront = 1f - pulse
+        val wave = 1f + pulse * 0.5f * exp(-10f * (dist - waveFront) * (dist - waveFront))
+        // 明暗闪烁：每节点用自身相位去相关，高频越足闪得越明显
+        val flick = 1f + (flicker - 1f) * (0.5f + 0.5f * sin(scene.time * 9f + phase * 3.7f))
+        val a = (alpha * wave * flick).coerceAtMost(1f)
         if (importance > 0.62f) {
-            dot(scope, warmDot, scene.nodeProjX(i), scene.nodeProjY(i), r * 3.4f, alpha * 0.045f, bright = false)
-            dot(scope, warmDot, scene.nodeProjX(i), scene.nodeProjY(i), r * 2.0f, alpha * 0.12f, bright = false)
+            dot(scope, warmDot, x, y, r * 3.4f, a * 0.045f, bright = false)
+            dot(scope, warmDot, x, y, r * 2.0f, a * 0.12f, bright = false)
         }
-        dot(scope, warmDot, scene.nodeProjX(i), scene.nodeProjY(i), r, alpha, bright = importance > 0.82f)
+        dot(scope, warmDot, x, y, r, a, bright = importance > 0.82f)
     }
 
-    // 电火花：沿边游走，正弦淡入淡出；节拍提速（sparkAt 内），高频让火花更亮
+    // 电火花：沿边游走，正弦淡入淡出；节拍轻微提速（sparkAt 内），高频让火花更亮
     for (i in 0 until scene.sparkCount()) {
         val p = scene.sparkAt(i, dt)
         val u = scene.lastSparkU
         val fade = sin(u * Math.PI.toFloat())
         val r = (1f + 0.8f * p.front) * 0.77f * p.scale
-        val trebleBoost = 1f + 0.9f * f.treble
+        val trebleBoost = 1f + 0.4f * f.treble
         val alpha = (0.35f + 0.45f * p.front) * 0.73f * fade * trebleBoost
         dot(scope, brightDot, p.x, p.y, r * 3.0f, 0.035f * fade * trebleBoost, bright = false)
         dot(scope, brightDot, p.x, p.y, r * 1.8f, 0.10f * fade * trebleBoost, bright = false)
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
-    // 节拍冲击波：从核心扩散的圆环，随 beat 衰减淡出
-    if (beat > 0.02f) {
-        val waveR = min(w, h) * (0.06f + (1f - beat) * 0.30f)
-        scope.drawCircle(
-            color = brightDot,
-            radius = waveR,
-            center = center,
-            alpha = 0.20f * beat,
-            style = Stroke(width = 1.4f + 1.6f * beat),
-            blendMode = BlendMode.Plus
-        )
+    // 神经脉冲信号：光信号沿边逐跳传播（一小部分边上有即可），
+    // 节拍时生成更活跃；彗尾渐隐 + 亮头，随高频轻微闪烁
+    scene.advanceSignals(dt, spawn = 0.1f + scene.audioBeat * 2.2f)
+    for (i in 0 until scene.signalMax()) {
+        if (!scene.signalAlive(i)) continue
+        val flick = 1f + 0.3f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + i * 2.1f))
+        // 彗尾：头部后方若干个渐隐光点
+        var k = 5
+        while (k >= 1) {
+            val back = k * 0.09f
+            val tp = scene.signalProj(i, back)
+            val fade = (1f - k / 6f)
+            dot(scope, warmDot, tp.x, tp.y, 0.9f * tp.scale, 0.16f * fade * fade, bright = false)
+            k--
+        }
+        val head = scene.signalProj(i, 0f)
+        dot(scope, warmDot, head.x, head.y, 2.2f * head.scale, 0.14f * flick, bright = false)
+        dot(scope, brightDot, head.x, head.y, 1.15f * head.scale, 0.85f * flick, bright = true)
     }
 
-    // 核心余烬（小面积暖光；响度/节拍增益）
-    val cr = min(w, h) * 0.026f * scene.frameScaleX(0) * (1f + 0.25f * beat)
+    // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）
+
+    // 核心余烬（小面积暖光；响度/节拍轻微增益）
+    val cr = min(w, h) * 0.026f * scene.frameScaleX(0) * (1f + 0.12f * beat)
     scope.drawCircle(
         brush = Brush.radialGradient(
-            0f to Color(0xFFFFEBBD).copy(alpha = (0.22f * (1f + 0.8f * level)).coerceAtMost(0.6f)),
-            0.2f to Color(0xFFFFBF50).copy(alpha = 0.13f * (1f + 0.8f * level)),
-            0.55f to Color(0xFFFF8F1E).copy(alpha = 0.045f * (1f + 0.8f * level)),
+            0f to Color(0xFFFFEBBD).copy(alpha = (0.22f * (1f + 0.4f * level)).coerceAtMost(0.5f)),
+            0.2f to Color(0xFFFFBF50).copy(alpha = 0.13f * (1f + 0.4f * level)),
+            0.55f to Color(0xFFFF8F1E).copy(alpha = 0.045f * (1f + 0.4f * level)),
             1f to Color(0xFFFF8F1E).copy(alpha = 0f),
             center = center,
             radius = cr * 2.8f

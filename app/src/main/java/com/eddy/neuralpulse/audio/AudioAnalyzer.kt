@@ -45,7 +45,9 @@ class AudioAnalyzer(private val record: AudioRecord) : Thread("neuralpulse-audio
         } catch (e: Exception) {
             android.util.Log.e(TAG, "分析线程异常退出", e)
         } finally {
+            // 归还录音资源：stop 停流，release 释放 native 侧 AudioRecord（缺 release 会泄漏）
             try { record.stop() } catch (_: Exception) {}
+            try { record.release() } catch (_: Exception) {}
         }
     }
 

@@ -148,6 +148,99 @@ class NeuralLivingScene {
         buildEdges()
         buildBridges()
         buildDustAndSparks()
+        buildNodeEdges()
+    }
+
+    // ---- 神经脉冲信号：沿边逐跳传播的光信号（NeuralPulse 新增） ----
+    private class Signal {
+        var edge = 0
+        var from = 0
+        var u = 0f
+        var hops = 0
+        var speed = 0.6f
+        var alive = false
+    }
+
+    private val SIGNAL_MAX = 14
+    private val signals = Array(SIGNAL_MAX) { Signal() }
+    private var nodeEdges: Array<IntArray> = arrayOf()
+    private var spawnAccum = 0f
+
+    private fun buildNodeEdges() {
+        val lists = Array(nodeCount) { ArrayList<Int>() }
+        var e = 0
+        while (e < edges.size) {
+            lists[edges[e]].add(e)
+            lists[edges[e + 1]].add(e)
+            e += 2
+        }
+        nodeEdges = Array(nodeCount) { lists[it].toIntArray() }
+    }
+
+    private fun otherEnd(edge: Int, node: Int): Int =
+        if (edges[edge * 2] == node) edges[edge * 2 + 1] else edges[edge * 2]
+
+    private fun spawnSignal() {
+        val s = signals.firstOrNull { !it.alive } ?: return
+        s.edge = (rand() * edgeCount).toInt().coerceIn(0, edgeCount - 1)
+        s.from = if (rand() < 0.5f) edges[s.edge * 2] else edges[s.edge * 2 + 1]
+        s.u = 0f
+        s.hops = 0
+        s.speed = 0.45f + rand() * 0.5f
+        s.alive = true
+    }
+
+    /**
+     * 推进神经脉冲信号：光信号沿边行进，到达节点后跳往相邻下一条边，
+     * 1~3 跳后消散。spawn 为生成速率（次/秒）：节拍时更活跃，一次只有
+     * 少数几条边上有信号，避免满屏全是。
+     */
+    fun advanceSignals(dt: Float, spawn: Float) {
+        spawnAccum += spawn * dt
+        var alive = 0
+        for (s in signals) if (s.alive) alive++
+        while (spawnAccum >= 1f) {
+            spawnAccum -= 1f
+            if (alive < SIGNAL_MAX) {
+                spawnSignal()
+                alive++
+            } else spawnAccum = spawnAccum.coerceAtMost(1f)
+        }
+        for (s in signals) {
+            if (!s.alive) continue
+            s.u += dt * s.speed * (1f + 0.25f * audioBeat)
+            if (s.u >= 1f) {
+                val arrived = otherEnd(s.edge, s.from)
+                s.from = arrived
+                s.hops++
+                val opts = nodeEdges[arrived]
+                if (s.hops >= 2 + (rand() * 2.4f).toInt() || opts.isEmpty()) {
+                    s.alive = false
+                } else {
+                    var next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
+                    if (next == s.edge && opts.size > 1) {
+                        next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
+                    }
+                    s.edge = next
+                    s.u = 0f
+                }
+            }
+        }
+    }
+
+    fun signalMax() = SIGNAL_MAX
+    fun signalAlive(i: Int) = signals[i].alive
+
+    /** 第 i 个信号在回退 back（0=头部）处的投影；立即消费共享实例。 */
+    fun signalProj(i: Int, back: Float): Proj {
+        val s = signals[i]
+        val other = otherEnd(s.edge, s.from)
+        val u = (s.u - back).coerceIn(0f, 1f)
+        return project(
+            worldX[s.from] + (worldX[other] - worldX[s.from]) * u,
+            worldY[s.from] + (worldY[other] - worldY[s.from]) * u,
+            worldZ[s.from] + (worldZ[other] - worldZ[s.from]) * u
+        )
     }
 
     private fun buildOrbits(): List<OrbitArc> {
@@ -292,7 +385,7 @@ class NeuralLivingScene {
     private fun computeLayerFrames() {
         val phase = time * TAU / 6.8f
         val drive = time * 0.24f + 0.055f * sin(phase)
-        ampBoost = 1f + audioLevel * 1.35f + audioBeat * 0.9f
+        ampBoost = 1f + audioLevel * 0.45f + audioBeat * 0.28f
         for (i in 0 until 5) {
             val l = LAYERS[i]
             val amp = l[1] * ampBoost; val lag = l[2]; val tilt = l[3]; val flex = l[4]
@@ -311,7 +404,7 @@ class NeuralLivingScene {
         val t = time
         val layer = nodeLayer[i].toInt()
         val amp = (when (layer) { 0 -> 0.010f; 1 -> 0.022f; else -> 0.014f }) *
-            (1f + 1.6f * audioLevel + 0.8f * audioBeat)
+            (1f + 0.55f * audioLevel + 0.25f * audioBeat)
         val bx = nodeX[i]; val by = nodeY[i]; val bz = nodeZ[i]; val ph = nodePhase[i]
         var dx = 0.72f * sin(0.53f * t + 3.1f * by + 1.2f * bz) + 0.28f * sin(0.67f * t + ph)
         var dy = 0.72f * sin(0.47f * t + 2.8f * bz - 1.4f * bx + 0.7f) + 0.28f * sin(0.59f * t + ph * 1.3f + 1.1f)
@@ -364,7 +457,8 @@ class NeuralLivingScene {
         rotationX += (targetRotationX - rotationX) * ease
         rotationY += (targetRotationY - rotationY) * ease
         if (!paused && dt > 0f) {
-            time += dt * (0.8f + 0.3f * activity) * (1f + 1.1f * audioBeat + 0.25f * audioLevel)
+            // 时间流：基率放缓、音频贡献轻微——呼吸频率随之变得从容
+            time += dt * (0.72f + 0.15f * activity) * (1f + 0.25f * audioBeat + 0.08f * audioLevel)
         }
     }
 
@@ -402,9 +496,9 @@ class NeuralLivingScene {
 
     fun sparkCount() = SPARK_COUNT
 
-    /** 推进并投影第 spark 个电火花；节拍冲击提升游速。 */
+    /** 推进并投影第 spark 个电火花；节拍轻微提速。 */
     fun sparkAt(spark: Int, dt: Float): Proj {
-        var u = sparkU[spark] + dt * sparkSpeed[spark] * activity * (1f + 0.7f * audioBeat)
+        var u = sparkU[spark] + dt * sparkSpeed[spark] * activity * (1f + 0.25f * audioBeat)
         if (u >= 1f) {
             u %= 1f
             sparkEdge[spark] = (rand() * edgeCount).toInt().coerceIn(0, edgeCount - 1)

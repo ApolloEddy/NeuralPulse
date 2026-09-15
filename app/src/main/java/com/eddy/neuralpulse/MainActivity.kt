@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,8 @@ import com.eddy.neuralpulse.audio.AudioCaptureService
 import com.eddy.neuralpulse.audio.AudioFeatures
 import com.eddy.neuralpulse.audio.AudioProcessor
 import com.eddy.neuralpulse.audio.DemoSignalSource
+import com.eddy.neuralpulse.audio.NowPlayingRepo
+import com.eddy.neuralpulse.audio.isNotificationListenerEnabled
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
@@ -77,11 +80,17 @@ private fun NeuralPulseApp() {
         )
     }
     var hud by remember { mutableStateOf(AudioBus.features) }
+    var songInfo by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var listenerEnabled by remember { mutableStateOf(false) }
 
     // HUD 状态轮询（分析线程写 volatile 快照，这里低频取回驱动重组）
     LaunchedEffect(Unit) {
         while (true) {
             hud = AudioBus.features
+            NowPlayingRepo.title?.let { t ->
+                songInfo = t to (NowPlayingRepo.artist ?: "")
+            } ?: run { songInfo = null }
+            listenerEnabled = isNotificationListenerEnabled(context)
             delay(80)
         }
     }
@@ -151,6 +160,14 @@ private fun NeuralPulseApp() {
         HudPanel(
             features = hud,
             mode = mode,
+            song = songInfo,
+            listenerEnabled = listenerEnabled,
+            onEnableSongs = {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(12.dp)
@@ -199,6 +216,9 @@ private val demoProcessor = AudioProcessor(48000)
 private fun HudPanel(
     features: AudioFeatures,
     mode: Mode,
+    song: Pair<String, String>?,
+    listenerEnabled: Boolean,
+    onEnableSongs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -219,6 +239,25 @@ private fun HudPanel(
             else -> Color(0xFF6E6E6E)
         }
         Text(status, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+
+        // 正在播放的歌曲信息（MediaSession 通路，需通知使用权）
+        if (song != null) {
+            Text(
+                text = "♪ ${song.first}" + if (song.second.isNotBlank()) " · ${song.second}" else "",
+                color = Color(0xFFB8E0FF),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        } else if (mode != Mode.DEMO && !listenerEnabled) {
+            Text(
+                text = "♪ 获取歌曲信息：开启通知使用权 →",
+                color = Color(0xFF8AB4FF),
+                fontSize = 11.sp,
+                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                modifier = Modifier.clickable(onClick = onEnableSongs)
+            )
+        }
 
         Text(
             text = if (features.bpm > 0f) "BPM %5.1f".format(features.bpm) else "BPM  --",

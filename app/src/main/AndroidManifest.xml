@@ -29,6 +29,16 @@
             android:name=".audio.AudioCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone" />
+
+        <!-- 正在播放歌曲信息源：需用户在系统设置授予「通知使用权」 -->
+        <service
+            android:name=".audio.NowPlayingService"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
