@@ -142,15 +142,6 @@ class NeuralLivingScene {
     private var layoutHeight = 0f
     private var unit = 0f
 
-    init {
-        buildNucleus()
-        buildShell()
-        buildEdges()
-        buildBridges()
-        buildDustAndSparks()
-        buildNodeEdges()
-    }
-
     // ---- 神经脉冲信号：沿边逐跳传播的光信号（NeuralPulse 新增） ----
     private class Signal {
         var edge = 0
@@ -165,6 +156,15 @@ class NeuralLivingScene {
     private val signals = Array(SIGNAL_MAX) { Signal() }
     private var nodeEdges: Array<IntArray> = arrayOf()
     private var spawnAccum = 0f
+
+    init {
+        buildNucleus()
+        buildShell()
+        buildEdges()
+        buildBridges()
+        buildDustAndSparks()
+        buildNodeEdges()
+    }
 
     private fun buildNodeEdges() {
         val lists = Array(nodeCount) { ArrayList<Int>() }
