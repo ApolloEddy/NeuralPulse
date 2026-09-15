@@ -83,10 +83,26 @@ private fun NeuralPulseApp() {
     var hud by remember { mutableStateOf(AudioBus.features) }
     var songInfo by remember { mutableStateOf<Pair<String, String>?>(null) }
     var listenerEnabled by remember { mutableStateOf(false) }
+    var modeSetAtMs by remember { mutableStateOf(0L) }
+
+    fun enterMode(m: Mode) {
+        mode = m
+        if (m == Mode.CAPTURE || m == Mode.MIC || m == Mode.VISUALIZER) {
+            modeSetAtMs = System.currentTimeMillis()
+        }
+    }
 
     // HUD 状态轮询（分析线程写 volatile 快照，这里低频取回驱动重组）
     LaunchedEffect(Unit) {
         while (true) {
+            // 服务退出（异常停止/系统回收）后同步界面回待捕获态（2.5s 宽限避开启动竞态）
+            if (AudioCaptureService.currentMode == null && modeSetAtMs > 0 &&
+                System.currentTimeMillis() - modeSetAtMs > 2500 &&
+                (mode == Mode.CAPTURE || mode == Mode.MIC || mode == Mode.VISUALIZER)
+            ) {
+                mode = Mode.IDLE
+                modeSetAtMs = 0L
+            }
             hud = AudioBus.features
             NowPlayingRepo.title?.let { t ->
                 songInfo = t to (NowPlayingRepo.artist ?: "")
@@ -126,19 +142,23 @@ private fun NeuralPulseApp() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             AudioCaptureService.startProjection(context, result.resultCode, result.data!!)
-            mode = Mode.CAPTURE
+            enterMode(Mode.CAPTURE)
         } else {
             mode = Mode.IDLE
         }
     }
 
     // 麦克风权限 → 启动麦克风采集
+    // 录音权限授权后的续接动作："capture"→继续投影授权；"visualizer"→启动系统混音
+    var afterPermission by remember { mutableStateOf("") }
     val micPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
+        if (granted && afterPermission == "capture") {
+            projectionIntent?.let { projection.launch(it) }
+        } else if (granted) {
             AudioCaptureService.startVisualizer(context)
-            mode = Mode.VISUALIZER
+            enterMode(Mode.VISUALIZER)
         } else {
             mode = Mode.IDLE
         }
@@ -177,7 +197,15 @@ private fun NeuralPulseApp() {
         Controls(
             mode = mode,
             onStartCapture = {
-                if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                // 首次使用先补齐 RECORD_AUDIO（部分 ROM 的播放捕获链路需要），
+                // 再走通知权限与投影授权
+                if (ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    afterPermission = "capture"
+                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                } else if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
                         context, Manifest.permission.POST_NOTIFICATIONS
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
@@ -194,7 +222,7 @@ private fun NeuralPulseApp() {
                     micPermission.launch(Manifest.permission.RECORD_AUDIO)
                 } else {
                     AudioCaptureService.startVisualizer(context)
-                    mode = Mode.VISUALIZER
+                    enterMode(Mode.VISUALIZER)
                 }
             },
             onStartDemo = { mode = Mode.DEMO },

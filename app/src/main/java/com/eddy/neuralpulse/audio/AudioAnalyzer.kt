@@ -9,7 +9,10 @@ import kotlin.math.sqrt
  * AudioRecord 读取线程：只负责把浮点 PCM 按 hop 喂给 [AudioProcessor]，
  * 全部 DSP 在 Processor 里（播放捕获与演示合成共用同一条链）。
  */
-class AudioAnalyzer(private val record: AudioRecord) : Thread("neuralpulse-audio") {
+class AudioAnalyzer(
+    private val record: AudioRecord,
+    private val onEnded: () -> Unit = {},
+) : Thread("neuralpulse-audio") {
 
     private val processor = AudioProcessor(record.sampleRate)
 
@@ -48,6 +51,8 @@ class AudioAnalyzer(private val record: AudioRecord) : Thread("neuralpulse-audio
             // 归还录音资源：stop 停流，release 释放 native 侧 AudioRecord（缺 release 会泄漏）
             try { record.stop() } catch (_: Exception) {}
             try { record.release() } catch (_: Exception) {}
+            // 线程退出（含异常路径）通知服务清理状态，避免 HUD 冻结在旧特征上
+            try { onEnded() } catch (_: Exception) {}
         }
     }
 

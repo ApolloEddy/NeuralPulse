@@ -373,28 +373,31 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         val ax = ends[0]; val ay = ends[1]
         val dx = ends[2] - ax; val dy = ends[3] - ay
 
-        // 路径高亮：已走过的与即将走的轻微点亮，越靠近脉冲越亮（线性渐变）
-        val hx = ax + dx * headU; val hy = ay + dy * headU
+        // 路径高亮：已走过的与即将走的轻微点亮，按实际传播方向定向
+        // （近脉冲端亮、两端暗的线性渐变；反向行进时自动跟随）
+        val pFrom = scene.signalProj(i, headU)   // 出发节点（u 钳到 0）
+        val pHead = scene.signalProj(i, 0f)      // 头部（实际方向）
+        val pAhead = scene.signalProj(i, -1f)    // 即将走到的节点（u 钳到 1）
         val glowNear = ((0.05f + 0.10f * beat + 0.05f * f.level) * fade).coerceAtMost(0.30f)
         val glowFar = glowNear * 0.22f
         scope.drawLine(
             brush = Brush.linearGradient(
                 listOf(lineColor.copy(alpha = glowFar), lineColor.copy(alpha = glowNear)),
-                start = Offset(ax, ay), end = Offset(hx, hy)
+                start = Offset(pFrom.x, pFrom.y), end = Offset(pHead.x, pHead.y)
             ),
-            start = Offset(ax, ay), end = Offset(hx, hy),
+            start = Offset(pFrom.x, pFrom.y), end = Offset(pHead.x, pHead.y),
             strokeWidth = 0.9f, blendMode = BlendMode.Plus
         )
         scope.drawLine(
             brush = Brush.linearGradient(
                 listOf(lineColor.copy(alpha = glowNear), lineColor.copy(alpha = glowFar)),
-                start = Offset(hx, hy), end = Offset(ax + dx, ay + dy)
+                start = Offset(pHead.x, pHead.y), end = Offset(pAhead.x, pAhead.y)
             ),
-            start = Offset(hx, hy), end = Offset(ax + dx, ay + dy),
+            start = Offset(pHead.x, pHead.y), end = Offset(pAhead.x, pAhead.y),
             strokeWidth = 0.9f, blendMode = BlendMode.Plus
         )
 
-        // 亮头 + 短促锐利的拖尾
+        // 亮头 + 短促锐利的拖尾（统一按实际传播方向计算）
         val hr = (1.0f + 0.7f * headU) * (0.7f + 0.5f * headU)
         var k = 4
         while (k >= 1) {
@@ -404,8 +407,8 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
             dot(scope, warmDot, tp.x, tp.y, (1.4f - 0.18f * k) * tp.scale, (0.28f * tfade * flick) * (0.5f + 0.5f * f.level), bright = false)
             k--
         }
-        dot(scope, warmDot, hx, hy, 1.8f * hr * 0.9f, (0.22f * fade * flick) * (0.5f + 0.5f * f.level), bright = false)
-        dot(scope, brightDot, hx, hy, 1.1f * hr, (0.95f * fade * flick) * (0.55f + 0.45f * f.level), bright = true)
+        dot(scope, warmDot, pHead.x, pHead.y, 1.8f * hr * 0.9f, (0.22f * fade * flick) * (0.5f + 0.5f * f.level), bright = false)
+        dot(scope, brightDot, pHead.x, pHead.y, 1.1f * hr, (0.95f * fade * flick) * (0.55f + 0.45f * f.level), bright = true)
     }
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）

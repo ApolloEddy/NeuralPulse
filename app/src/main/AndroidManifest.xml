@@ -7,6 +7,8 @@
     <!-- 麦克风回退通路：真机拾音 / 模拟器映射宿主输入 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Visualizer 输出混音会话（会话 0）必需 -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application

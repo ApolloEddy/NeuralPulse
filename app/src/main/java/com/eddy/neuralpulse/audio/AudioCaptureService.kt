@@ -84,6 +84,9 @@ class AudioCaptureService : Service() {
             val frameDt = if (lastVizNanos == 0L) 0f
             else ((now - lastVizNanos) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
             lastVizNanos = now
+            // 按回调提供的实际采样率建/换处理器（非 48kHz 设备避免频率映射偏差）
+            val rate = (samplingRate / 1000).coerceAtLeast(8000)
+            if (vizProcessor?.sampleRate != rate) vizProcessor = AudioProcessor(rate)
             val proc = vizProcessor ?: return
             val hop = FloatArray(waveform.size) { ((waveform[it].toInt() and 0xFF) - 128) / 128f }
             for (i in hop.indices) hop[i] *= 1.5f
@@ -190,7 +193,7 @@ class AudioCaptureService : Service() {
             .setAudioPlaybackCaptureConfig(playbackConfig)
             .build()
 
-        analyzer = AudioAnalyzer(record).also { it.start() }
+        analyzer = AudioAnalyzer(record) { analyzerEnded() }.also { it.start() }
         Log.i(TAG, "系统音频捕获已启动")
     }
 
@@ -202,7 +205,7 @@ class AudioCaptureService : Service() {
             AudioFormat.ENCODING_PCM_FLOAT,
             bufferBytes()
         )
-        analyzer = AudioAnalyzer(record).also { it.start() }
+        analyzer = AudioAnalyzer(record) { analyzerEnded() }.also { it.start() }
         Log.i(TAG, "麦克风采集已启动")
     }
 
@@ -222,12 +225,26 @@ class AudioCaptureService : Service() {
     private fun beginVisualizerCapture() {
         startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         val viz = Visualizer(0) // 0 = 输出混音
-        viz.captureSize = 1024
-        vizProcessor = AudioProcessor(48000)
-        viz.setDataCaptureListener(vizCallback, Visualizer.getMaxCaptureRate(), true, false)
-        viz.enabled = true
-        visualizer = viz
-        Log.i(TAG, "系统混音（Visualizer）采集已启动")
+        visualizer = viz // 先交给成员字段：初始化中途失败也能被 teardown 正确 release
+        try {
+            viz.captureSize = 1024
+            vizProcessor = AudioProcessor(48000) // 实际采样率在首笔回调里自适应
+            viz.setDataCaptureListener(vizCallback, Visualizer.getMaxCaptureRate(), true, false)
+            viz.enabled = true
+            Log.i(TAG, "系统混音（Visualizer）采集已启动")
+        } catch (e: Exception) {
+            viz.release()
+            visualizer = null
+            vizProcessor = null
+            throw e
+        }
+    }
+
+    /** 分析线程退出（含异常）时的状态清理：回写总线并停服。 */
+    private fun analyzerEnded() {
+        analyzer = null
+        AudioBus.inactive()
+        stopSelf()
     }
 
     private fun teardown() {
