@@ -158,7 +158,7 @@ class NeuralLivingScene {
         var alive = false
     }
 
-    private val SIGNAL_MAX = 12
+    private val SIGNAL_MAX = 5
     private val signals = Array(SIGNAL_MAX) { Signal() }
     private var nodeEdges: Array<IntArray> = arrayOf()
     private var spawnAccum = 0f
