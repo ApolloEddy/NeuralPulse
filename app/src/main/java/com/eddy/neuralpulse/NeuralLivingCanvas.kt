@@ -349,24 +349,36 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
-    // 神经脉冲信号：光信号沿边逐跳传播（一小部分边上有即可），
-    // 节拍时生成更活跃；彗尾渐隐 + 亮头，随高频轻微闪烁
-    scene.advanceSignals(dt, spawn = 0.1f + scene.audioBeat * 2.2f)
+    // 神经脉冲：相电流式电流包——包络×内部波峰的点列整体沿线涌过，到节点逐跳路由。
+    // 数量随响度+节拍、流速随响度/节拍/BPM、包长随响度、亮度随响度与高频
+    val bpmNorm = ((f.bpm - 80f) / 80f).coerceIn(0f, 1f)
+    scene.advanceSignals(
+        dt,
+        spawn = 0.08f + 0.9f * f.level + 1.6f * beat,
+        speedMul = 1f + 0.5f * f.level + 0.4f * beat + 0.3f * bpmNorm
+    )
     for (i in 0 until scene.signalMax()) {
         if (!scene.signalAlive(i)) continue
-        val flick = 1f + 0.3f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + i * 2.1f))
-        // 彗尾：头部后方若干个渐隐光点
-        var k = 5
-        while (k >= 1) {
-            val back = k * 0.09f
-            val tp = scene.signalProj(i, back)
-            val fade = (1f - k / 6f)
-            dot(scope, warmDot, tp.x, tp.y, 0.9f * tp.scale, 0.16f * fade * fade, bright = false)
-            k--
+        val len = scene.signalLength(i) * (1f + 0.4f * f.level)
+        val phase = scene.signalPhase(i)
+        val headU = scene.signalHeadU(i)
+        val flick = 1f + 0.25f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
+        val baseAmp = (0.5f + 0.5f * f.level) * flick
+        val steps = 12
+        for (j in steps downTo 1) {
+            val s = j.toFloat() / steps * len      // 距头部（u 单位）
+            val p = scene.signalProj(i, s)
+            // 包络（头亮尾暗）× 内部正弦波峰 = 一串电流峰
+            val env = 1f - s / len
+            val wave = 0.5f + 0.5f * sin((2.0 * Math.PI).toFloat() * (s / len * 3.5f) + phase)
+            val a = (0.45f * baseAmp * env * (0.35f + 0.65f * wave)).coerceAtMost(0.85f)
+            if (a <= 0.012f) continue
+            val r = (0.5f + 1.0f * wave * env) * p.scale
+            dot(scope, if (wave > 0.72f) brightDot else warmDot, p.x, p.y, r, a, bright = wave > 0.85f)
         }
-        val head = scene.signalProj(i, 0f)
-        dot(scope, warmDot, head.x, head.y, 2.2f * head.scale, 0.14f * flick, bright = false)
-        dot(scope, brightDot, head.x, head.y, 1.15f * head.scale, 0.85f * flick, bright = true)
+        // 亮头
+        val hp = scene.signalProj(i, 0f)
+        dot(scope, brightDot, hp.x, hp.y, 1.0f * hp.scale, 0.75f * baseAmp, bright = true)
     }
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）

@@ -142,13 +142,16 @@ class NeuralLivingScene {
     private var layoutHeight = 0f
     private var unit = 0f
 
-    // ---- 神经脉冲信号：沿边逐跳传播的光信号（NeuralPulse 新增） ----
+    // ---- 神经脉冲信号：沿边逐跳传播的相电流（NeuralPulse 新增） ----
+    // 每个信号是一段"电流包"：包络内含若干波峰，整体沿边流动，到节点后逐跳路由
     private class Signal {
         var edge = 0
         var from = 0
-        var u = 0f
+        var u = 0f        // 头部位置 0..1
         var hops = 0
         var speed = 0.6f
+        var length = 0.3f // 电流包长度（u 单位）
+        var phase = 0f    // 内部波峰相位
         var alive = false
     }
 
@@ -187,16 +190,18 @@ class NeuralLivingScene {
         s.from = if (rand() < 0.5f) edges[s.edge * 2] else edges[s.edge * 2 + 1]
         s.u = 0f
         s.hops = 0
-        s.speed = 0.45f + rand() * 0.5f
+        s.speed = 0.4f + rand() * 0.45f
+        s.length = 0.18f + rand() * 0.3f
+        s.phase = rand() * TAU
         s.alive = true
     }
 
     /**
-     * 推进神经脉冲信号：光信号沿边行进，到达节点后跳往相邻下一条边，
-     * 1~3 跳后消散。spawn 为生成速率（次/秒）：节拍时更活跃，一次只有
-     * 少数几条边上有信号，避免满屏全是。
+     * 推进神经脉冲电流包：整体沿边流动，到达节点后跳往相邻下一条边，
+     * 1~3 跳后消散。spawn 为生成速率（次/秒），speedMul 为流速倍率——
+     * 均由渲染层依据响度/节拍/BPM 实时传入。
      */
-    fun advanceSignals(dt: Float, spawn: Float) {
+    fun advanceSignals(dt: Float, spawn: Float, speedMul: Float) {
         spawnAccum += spawn * dt
         var alive = 0
         for (s in signals) if (s.alive) alive++
@@ -209,7 +214,7 @@ class NeuralLivingScene {
         }
         for (s in signals) {
             if (!s.alive) continue
-            s.u += dt * s.speed * (1f + 0.25f * audioBeat)
+            s.u += dt * s.speed * speedMul
             if (s.u >= 1f) {
                 val arrived = otherEnd(s.edge, s.from)
                 s.from = arrived
@@ -231,6 +236,9 @@ class NeuralLivingScene {
 
     fun signalMax() = SIGNAL_MAX
     fun signalAlive(i: Int) = signals[i].alive
+    fun signalHeadU(i: Int) = signals[i].u
+    fun signalLength(i: Int) = signals[i].length
+    fun signalPhase(i: Int) = signals[i].phase
 
     /** 诊断用：倾倒全部信号状态。 */
     fun dumpSignals(): String = buildString {

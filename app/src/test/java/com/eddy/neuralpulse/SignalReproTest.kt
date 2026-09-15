@@ -11,7 +11,7 @@ class SignalReproTest {
         var t = 0f
         while (t < 180f) {
             val beat = if ((t * 2.4).toInt() % 2 == 0) 0.8f else 0.3f
-            scene.advanceSignals(dt, spawn = 0.1f + beat * 2.2f)
+            scene.advanceSignals(dt, spawn = 0.1f + beat * 2.2f, speedMul = 1f + 0.5f * beat + 0.3f * beat)
             try {
                 for (i in 0 until scene.signalMax()) {
                     if (!scene.signalAlive(i)) continue
