@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Mode { IDLE, CAPTURE, MIC, DEMO }
+private enum class Mode { IDLE, CAPTURE, MIC, VISUALIZER, DEMO }
 
 @Composable
 private fun NeuralPulseApp() {
@@ -74,6 +74,7 @@ private fun NeuralPulseApp() {
         mutableStateOf(
             when (AudioCaptureService.currentMode) {
                 AudioCaptureService.MODE_MIC -> Mode.MIC
+                AudioCaptureService.MODE_VISUALIZER -> Mode.VISUALIZER
                 AudioCaptureService.MODE_PROJECTION -> Mode.CAPTURE
                 else -> Mode.IDLE
             }
@@ -136,8 +137,8 @@ private fun NeuralPulseApp() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            AudioCaptureService.startMic(context)
-            mode = Mode.MIC
+            AudioCaptureService.startVisualizer(context)
+            mode = Mode.VISUALIZER
         } else {
             mode = Mode.IDLE
         }
@@ -192,8 +193,8 @@ private fun NeuralPulseApp() {
                 ) {
                     micPermission.launch(Manifest.permission.RECORD_AUDIO)
                 } else {
-                    AudioCaptureService.startMic(context)
-                    mode = Mode.MIC
+                    AudioCaptureService.startVisualizer(context)
+                    mode = Mode.VISUALIZER
                 }
             },
             onStartDemo = { mode = Mode.DEMO },
@@ -230,6 +231,7 @@ private fun HudPanel(
         val status = when {
             features.active && mode == Mode.CAPTURE -> "● 系统音频捕获中"
             features.active && mode == Mode.MIC -> "● 麦克风输入中"
+            features.active && mode == Mode.VISUALIZER -> "● 系统混音捕捉中"
             mode == Mode.DEMO -> "◐ 演示脉冲 · 真分析管线"
             else -> "○ 待捕获系统音频"
         }
@@ -319,7 +321,7 @@ private fun Controls(
         when (mode) {
             Mode.IDLE -> {
                 ActionButton("● 捕获系统音频", Color(0xFF32200D), Color(0xFFFFAF37), onStartCapture)
-                ActionButton("🎙 麦克风", Color(0xFF1A1206), Color(0xFFFFC94B), onStartMic)
+                ActionButton("⚡ 系统混音", Color(0xFF1A1206), Color(0xFFFFC94B), onStartMic)
                 ActionButton("▷ 演示", Color(0xFF101820), Color(0xFF8AB4FF), onStartDemo)
             }
             else -> ActionButton(

@@ -11,6 +11,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.audiofx.Visualizer
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -37,6 +38,7 @@ class AudioCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "resultData"
         const val MODE_PROJECTION = "projection"
         const val MODE_MIC = "mic"
+        const val MODE_VISUALIZER = "visualizer"
         private const val CHANNEL_ID = "neuralpulse_capture"
         private const val NOTIFICATION_ID = 11
 
@@ -59,6 +61,12 @@ class AudioCaptureService : Service() {
             context.startForegroundService(intent)
         }
 
+        fun startVisualizer(context: Context) {
+            val intent = Intent(context, AudioCaptureService::class.java)
+                .putExtra(EXTRA_MODE, MODE_VISUALIZER)
+            context.startForegroundService(intent)
+        }
+
         fun stop(context: Context) {
             context.stopService(Intent(context, AudioCaptureService::class.java))
         }
@@ -66,6 +74,24 @@ class AudioCaptureService : Service() {
 
     private var projection: MediaProjection? = null
     private var analyzer: AudioAnalyzer? = null
+    private var visualizer: Visualizer? = null
+    private var lastVizNanos = 0L
+    private var vizProcessor: AudioProcessor? = null
+    private val vizCallback = object : Visualizer.OnDataCaptureListener {
+        override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+            if (waveform == null || waveform.isEmpty()) return
+            val now = System.nanoTime()
+            val frameDt = if (lastVizNanos == 0L) 0f
+            else ((now - lastVizNanos) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
+            lastVizNanos = now
+            val proc = vizProcessor ?: return
+            val hop = FloatArray(waveform.size) { ((waveform[it].toInt() and 0xFF) - 128) / 128f }
+            for (i in hop.indices) hop[i] *= 1.5f
+            proc.processFrame(hop, active = true, frameDt = frameDt)
+        }
+
+        override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+    }
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -90,7 +116,7 @@ class AudioCaptureService : Service() {
             return START_NOT_STICKY
         }
         val mode = i.getStringExtra(EXTRA_MODE) ?: MODE_PROJECTION
-        if (analyzer != null) {
+        if (analyzer != null || visualizer != null) {
             return START_STICKY // 已在采集：忽略重复启动
         }
         currentMode = mode
@@ -98,6 +124,9 @@ class AudioCaptureService : Service() {
             if (mode == MODE_MIC) {
                 startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                 beginMicCapture()
+            } else if (mode == MODE_VISUALIZER) {
+                startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                beginVisualizerCapture()
             } else {
                 // Android 14+：投影授权结果必须由 mediaProjection 型前台服务消费，
                 // 因此必须在消费授权前先以该类型进入前台。
@@ -190,9 +219,26 @@ class AudioCaptureService : Service() {
         return (if (minBuf < 0) 4800 else minBuf).coerceAtLeast(4800) * 2 // ≥100ms
     }
 
+    private fun beginVisualizerCapture() {
+        startForegroundWithType(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        val viz = Visualizer(0) // 0 = 输出混音
+        viz.captureSize = 1024
+        vizProcessor = AudioProcessor(48000)
+        viz.setDataCaptureListener(vizCallback, Visualizer.getMaxCaptureRate(), true, false)
+        viz.enabled = true
+        visualizer = viz
+        Log.i(TAG, "系统混音（Visualizer）采集已启动")
+    }
+
     private fun teardown() {
         analyzer?.stopAnalyzer()
         analyzer = null
+        try {
+            visualizer?.enabled = false
+            visualizer?.release()
+        } catch (_: Exception) {}
+        visualizer = null
+        lastVizNanos = 0L
         projection?.unregisterCallback(projectionCallback)
         projection?.stop()
         projection = null

@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -189,6 +190,7 @@ private val BRIGHT_DOT = floatArrayOf(37f, 0.31f, 1.00f)
 private val LINE_COLOR = floatArrayOf(37f, 0.78f, 1.00f)
 
 private val hsvBuf = FloatArray(3)
+private val wavePath = Path()
 
 /** 依音频特征对基色做色相偏移与亮度增益：轻微漂移——低频向暖红压一点，高频向亮金抬一点。 */
 private fun tune(base: FloatArray, hue01: Float, level: Float): Color {
@@ -350,7 +352,7 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
-    // 神经脉冲：相电流电波——正弦波形挂在连线上沿线传播，到节点后逐跳路由。
+    // 神经脉冲：线性电波——正弦波形以连续曲线挂在连线上沿线传播，到节点后逐跳路由。
     // 数量随响度+节拍、传播速度随响度/节拍/BPM、波幅随响度与强度、亮度随高频闪烁
     val bpmNorm = ((f.bpm - 80f) / 80f).coerceIn(0f, 1f)
     scene.advanceSignals(
@@ -362,12 +364,11 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
     val tau = (2.0 * Math.PI).toFloat()
     for (i in 0 until scene.signalMax()) {
         if (!scene.signalAlive(i)) continue
-        val len = scene.signalLength(i) * (1f + 0.3f * f.level) // 电流包覆盖的边长比例
         val phase = scene.signalPhase(i)
         val headU = scene.signalHeadU(i)
         val strength = scene.signalStrength(i)
-        val flick = 1f + 0.3f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
-        val ampBase = (0.55f + 0.45f * f.level) * flick * strength
+        val flick = 1f + 0.25f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
+        val ampBase = (0.5f + 0.5f * f.level) * flick * strength
 
         scene.signalEndPoints(i, ends)
         val ax = ends[0]; val ay = ends[1]
@@ -375,34 +376,32 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         val lenPx = sqrt(dx * dx + dy * dy)
         if (lenPx < 14f) continue
         val ux = dx / lenPx; val uy = dy / lenPx
-        val px = -uy; val py = ux                       // 连线的法向（电波位移方向）
-        val samples = (lenPx / 4.5f).toInt().coerceIn(12, 44)
-        val wavelength = lenPx / 3.2f                   // 约 3 个波峰挂在一条边上
-        val ampPx = min(lenPx * 0.10f, 6f + 16f * strength) * (0.5f + 0.5f * f.level)
+        val px = -uy; val py = ux                       // 连线法向（电波位移方向）
+        val samples = (lenPx / 7f).toInt().coerceIn(12, 26)
+        val wavelength = lenPx / 2.8f                   // 约 2~3 个波峰挂在一条边上
+        val ampPx = min(lenPx * 0.085f, 5f + 13f * strength) * (0.45f + 0.55f * f.level)
 
-        val kProp = scene.time * 8f + phase * 10f       // 行波相位：随时间向头部方向传播
+        val kProp = scene.time * 9f + phase * 10f       // 行波相位：随时间向头部方向传播
+        wavePath.reset()
         for (j in 0..samples) {
-            val fr = j.toFloat() / samples              // 沿边位置 0..1（0=A 端）
-            val d = headU - fr                          // 头部后方的距离（u 单位）
-            if (d < 0f || d > len) continue             // 电波只存在于电流包区域
-            val env = (1f - d / len) * (1f - exp(-d * 18f)) // 头亮尾渐起渐落
-            val wave = sin(tau * (fr * lenPx / wavelength) - kProp)
-            val off = ampPx * env * wave
-            val a = (0.55f * ampBase * env * (0.4f + 0.6f * kotlin.math.abs(wave)) * strength).coerceAtMost(0.9f)
-            if (a <= 0.01f) continue
-            val x = ax + dx * fr + px * off
-            val y = ay + dy * fr + py * off
-            val r = (0.7f + 0.9f * kotlin.math.abs(wave) * env) * (0.7f + 0.5f * strength)
-            dot(scope, if (kotlin.math.abs(wave) > 0.72f) brightDot else warmDot, x, y, r, a, bright = kotlin.math.abs(wave) > 0.85f)
+            val fr = j.toFloat() / samples
+            // 端点轻收拢，避免波形在节点处生硬相交
+            val taper = 0.35f + 0.65f * sin(fr * Math.PI.toFloat())
+            val disp = ampPx * taper * sin(tau * (fr * lenPx / wavelength) - kProp)
+            val x = ax + dx * fr + px * disp
+            val y = ay + dy * fr + py * disp
+            if (j == 0) wavePath.moveTo(x, y) else wavePath.lineTo(x, y)
         }
-        // 行波亮头：电流包前端的亮子骑在波上
-        val waveHead = sin(tau * (headU * lenPx / wavelength) - kProp)
-        val hx = ax + dx * headU + px * (ampPx * waveHead)
-        val hy = ay + dy * headU + py * (ampPx * waveHead)
-        dot(scope, warmDot, hx, hy, 2.4f, 0.14f * ampBase * strength, bright = false)
-        dot(scope, brightDot, hx, hy, 1.2f, 0.85f * ampBase * strength, bright = true)
+        // 两层描边：宽光晕 + 细亮芯，构成连续发光电波
+        scope.drawPath(wavePath, lineColor, alpha = (0.10f * ampBase * strength).coerceAtMost(0.5f),
+            style = Stroke(width = 3.4f), blendMode = BlendMode.Plus)
+        scope.drawPath(wavePath, brightDot, alpha = (0.30f * ampBase * strength).coerceAtMost(0.8f),
+            style = Stroke(width = 1.1f), blendMode = BlendMode.Plus)
+        // 信号头部亮子：标示波前位置
+        val hx = ax + dx * headU
+        val hy = ay + dy * headU
+        dot(scope, brightDot, hx, hy, 1.1f, 0.7f * ampBase * strength, bright = true)
     }
-
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）
 

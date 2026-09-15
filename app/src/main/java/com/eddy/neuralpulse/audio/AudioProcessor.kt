@@ -80,7 +80,7 @@ class AudioProcessor(val sampleRate: Int) {
     private var debugCount = 0
 
     /** 处理一帧 hop 采样（HOP 个 float）。 */
-    fun processFrame(hop: FloatArray, active: Boolean = true) {
+    fun processFrame(hop: FloatArray, active: Boolean = true, frameDt: Float = HOP.toFloat() / sampleRate) {
         // 帧前移，尾部放新样本
         System.arraycopy(windowBuf, HOP, windowBuf, 0, FFT_SIZE - HOP)
         System.arraycopy(hop, 0, windowBuf, FFT_SIZE - HOP, HOP)
@@ -93,8 +93,8 @@ class AudioProcessor(val sampleRate: Int) {
 
         // ---- 静音门限：底噪不进 AGC、不触发节拍，直接发布空特征 ----
         if (levelDb < NOISE_GATE_DB) {
-            analysisClock += HOP.toFloat() / sampleRate
-            decayBeat()
+            analysisClock += frameDt
+            decayBeat(frameDt)
             if (beatId > 0 && analysisClock - lastBeatAt > BPM_SILENCE_RESET) {
                 intervalsFill = 0
                 bpm = 0f
@@ -137,8 +137,8 @@ class AudioProcessor(val sampleRate: Int) {
         System.arraycopy(mags, 0, prevMags, 0, mags.size)
         hasPrev = true
 
-        analysisClock += HOP.toFloat() / sampleRate
-        detectBeat(flux)
+        analysisClock += frameDt
+        detectBeat(flux, frameDt)
 
         if (beatDebug && ++debugCount % 45 == 0) {
             var mean = 0f
@@ -179,13 +179,13 @@ class AudioProcessor(val sampleRate: Int) {
     }
 
     // ---- 节拍检测：谱通量 vs 滑窗均值自适应阈值 ----
-    private fun detectBeat(flux: Float) {
+    private fun detectBeat(flux: Float, frameDt: Float) {
         if (flux > 0f) {
             fluxHistory[fluxHead] = flux
             fluxHead = (fluxHead + 1) % fluxHistory.size
             if (fluxFill < fluxHistory.size) fluxFill++
         }
-        if (fluxFill < 10) { decayBeat(); return }
+        if (fluxFill < 10) { decayBeat(frameDt); return }
 
         var mean = 0f
         for (i in 0 until fluxFill) mean += fluxHistory[i]
@@ -201,13 +201,12 @@ class AudioProcessor(val sampleRate: Int) {
             lastBeatStrength = ((flux / (mean + EPS) - 1.2f) / 1.8f).coerceIn(0.25f, 1f)
             if (intervalsFill >= 3) estimateBpm()
         } else {
-            decayBeat()
+            decayBeat(frameDt)
         }
     }
 
-    private fun decayBeat() {
-        // hop 时长的指数衰减，渲染帧率高于分析率，视觉上再线性插值
-        lastBeatStrength *= exp(-(HOP.toFloat() / sampleRate) * 5f)
+    private fun decayBeat(frameDt: Float) {
+        lastBeatStrength *= exp(-frameDt * 5f)
         if (lastBeatStrength < 0.01f) lastBeatStrength = 0f
     }
 
