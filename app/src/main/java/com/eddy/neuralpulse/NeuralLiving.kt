@@ -170,8 +170,9 @@ class NeuralLivingScene {
         val lists = Array(nodeCount) { ArrayList<Int>() }
         var e = 0
         while (e < edges.size) {
-            lists[edges[e]].add(e)
-            lists[edges[e + 1]].add(e)
+            val edgeIdx = e / 2 // edges 存的是 [a0,b0,a1,b1,...]，e 为原始下标，边号 = e/2
+            lists[edges[e]].add(edgeIdx)
+            lists[edges[e + 1]].add(edgeIdx)
             e += 2
         }
         nodeEdges = Array(nodeCount) { lists[it].toIntArray() }
@@ -230,6 +231,17 @@ class NeuralLivingScene {
 
     fun signalMax() = SIGNAL_MAX
     fun signalAlive(i: Int) = signals[i].alive
+
+    /** 诊断用：倾倒全部信号状态。 */
+    fun dumpSignals(): String = buildString {
+        append("edgeCount=").append(edgeCount).append(' ')
+        for ((i, s) in signals.withIndex()) {
+            if (s.alive) append("sig#$i[edge=").append(s.edge)
+                .append(" from=").append(s.from)
+                .append(" u=").append(s.u)
+                .append(" hops=").append(s.hops).append("] ")
+        }
+    }
 
     /** 第 i 个信号在回退 back（0=头部）处的投影；立即消费共享实例。 */
     fun signalProj(i: Int, back: Float): Proj {
