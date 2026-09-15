@@ -36,6 +36,7 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.isActive
 import androidx.compose.runtime.withFrameNanos
 
@@ -349,39 +350,59 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         dot(scope, brightDot, p.x, p.y, r, alpha, bright = true)
     }
 
-    // 神经脉冲：相电流式电流包——包络×内部波峰的点列整体沿线涌过，到节点逐跳路由。
-    // 数量随响度+节拍、流速随响度/节拍/BPM、包长随响度、亮度随响度与高频
+    // 神经脉冲：相电流电波——正弦波形挂在连线上沿线传播，到节点后逐跳路由。
+    // 数量随响度+节拍、传播速度随响度/节拍/BPM、波幅随响度与强度、亮度随高频闪烁
     val bpmNorm = ((f.bpm - 80f) / 80f).coerceIn(0f, 1f)
     scene.advanceSignals(
         dt,
         spawn = 0.08f + 0.9f * f.level + 1.6f * beat,
         speedMul = 1f + 0.5f * f.level + 0.4f * beat + 0.3f * bpmNorm
     )
+    val ends = FloatArray(4)
+    val tau = (2.0 * Math.PI).toFloat()
     for (i in 0 until scene.signalMax()) {
         if (!scene.signalAlive(i)) continue
-        val len = scene.signalLength(i) * (1f + 0.4f * f.level)
+        val len = scene.signalLength(i) * (1f + 0.3f * f.level) // 电流包覆盖的边长比例
         val phase = scene.signalPhase(i)
         val headU = scene.signalHeadU(i)
         val strength = scene.signalStrength(i)
-        val flick = 1f + 0.25f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
-        val baseAmp = (0.55f + 0.45f * f.level) * flick
-        val steps = 12
-        for (j in steps downTo 1) {
-            val s = j.toFloat() / steps * len      // 距头部（u 单位）
-            val p = scene.signalProj(i, s)
-            // 包络（头亮尾暗）× 内部正弦波峰 = 一串电流峰
-            val env = 1f - s / len
-            val wave = 0.5f + 0.5f * sin((2.0 * Math.PI).toFloat() * (s / len * 3.5f) + phase)
-            val a = (0.6f * baseAmp * env * (0.35f + 0.65f * wave) * strength).coerceAtMost(0.9f)
-            if (a <= 0.012f) continue
-            val r = (0.6f + 1.2f * wave * env) * p.scale
-            dot(scope, if (wave > 0.72f) brightDot else warmDot, p.x, p.y, r, a, bright = wave > 0.85f)
+        val flick = 1f + 0.3f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
+        val ampBase = (0.55f + 0.45f * f.level) * flick * strength
+
+        scene.signalEndPoints(i, ends)
+        val ax = ends[0]; val ay = ends[1]
+        val dx = ends[2] - ax; val dy = ends[3] - ay
+        val lenPx = sqrt(dx * dx + dy * dy)
+        if (lenPx < 14f) continue
+        val ux = dx / lenPx; val uy = dy / lenPx
+        val px = -uy; val py = ux                       // 连线的法向（电波位移方向）
+        val samples = (lenPx / 4.5f).toInt().coerceIn(12, 44)
+        val wavelength = lenPx / 3.2f                   // 约 3 个波峰挂在一条边上
+        val ampPx = min(lenPx * 0.10f, 6f + 16f * strength) * (0.5f + 0.5f * f.level)
+
+        val kProp = scene.time * 8f + phase * 10f       // 行波相位：随时间向头部方向传播
+        for (j in 0..samples) {
+            val fr = j.toFloat() / samples              // 沿边位置 0..1（0=A 端）
+            val d = headU - fr                          // 头部后方的距离（u 单位）
+            if (d < 0f || d > len) continue             // 电波只存在于电流包区域
+            val env = (1f - d / len) * (1f - exp(-d * 18f)) // 头亮尾渐起渐落
+            val wave = sin(tau * (fr * lenPx / wavelength) - kProp)
+            val off = ampPx * env * wave
+            val a = (0.55f * ampBase * env * (0.4f + 0.6f * kotlin.math.abs(wave)) * strength).coerceAtMost(0.9f)
+            if (a <= 0.01f) continue
+            val x = ax + dx * fr + px * off
+            val y = ay + dy * fr + py * off
+            val r = (0.7f + 0.9f * kotlin.math.abs(wave) * env) * (0.7f + 0.5f * strength)
+            dot(scope, if (kotlin.math.abs(wave) > 0.72f) brightDot else warmDot, x, y, r, a, bright = kotlin.math.abs(wave) > 0.85f)
         }
-        // 亮头
-        val hp = scene.signalProj(i, 0f)
-        dot(scope, warmDot, hp.x, hp.y, 2.6f * hp.scale, 0.16f * baseAmp * strength, bright = false)
-        dot(scope, brightDot, hp.x, hp.y, 1.2f * hp.scale, 0.85f * baseAmp * strength, bright = true)
+        // 行波亮头：电流包前端的亮子骑在波上
+        val waveHead = sin(tau * (headU * lenPx / wavelength) - kProp)
+        val hx = ax + dx * headU + px * (ampPx * waveHead)
+        val hy = ay + dy * headU + py * (ampPx * waveHead)
+        dot(scope, warmDot, hx, hy, 2.4f, 0.14f * ampBase * strength, bright = false)
+        dot(scope, brightDot, hx, hy, 1.2f, 0.85f * ampBase * strength, bright = true)
     }
+
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）
 

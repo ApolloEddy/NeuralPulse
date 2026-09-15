@@ -248,6 +248,17 @@ class NeuralLivingScene {
     fun signalPhase(i: Int) = signals[i].phase
     fun signalStrength(i: Int) = signals[i].strength
 
+    /** 第 i 个信号所在边的两个端点投影 → out[0..3]（ax,ay,bx,by）。 */
+    fun signalEndPoints(i: Int, out: FloatArray) {
+        val s = signals[i]
+        val a = edges[s.edge * 2]
+        val b = edges[s.edge * 2 + 1]
+        val pa = project(worldX[a], worldY[a], worldZ[a])
+        out[0] = pa.x; out[1] = pa.y
+        val pb = project(worldX[b], worldY[b], worldZ[b])
+        out[2] = pb.x; out[3] = pb.y
+    }
+
     /** 诊断用：倾倒全部信号状态。 */
     fun dumpSignals(): String = buildString {
         append("edgeCount=").append(edgeCount).append(' ')
