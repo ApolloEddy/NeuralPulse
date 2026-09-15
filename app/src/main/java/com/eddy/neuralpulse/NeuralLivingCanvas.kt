@@ -362,8 +362,9 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
         val len = scene.signalLength(i) * (1f + 0.4f * f.level)
         val phase = scene.signalPhase(i)
         val headU = scene.signalHeadU(i)
+        val strength = scene.signalStrength(i)
         val flick = 1f + 0.25f * f.treble * (0.6f + 0.4f * sin(scene.time * 11f + phase * 5f))
-        val baseAmp = (0.5f + 0.5f * f.level) * flick
+        val baseAmp = (0.55f + 0.45f * f.level) * flick
         val steps = 12
         for (j in steps downTo 1) {
             val s = j.toFloat() / steps * len      // 距头部（u 单位）
@@ -371,14 +372,15 @@ private fun renderScene(scope: DrawScope, scene: NeuralLivingScene, dt: Float) {
             // 包络（头亮尾暗）× 内部正弦波峰 = 一串电流峰
             val env = 1f - s / len
             val wave = 0.5f + 0.5f * sin((2.0 * Math.PI).toFloat() * (s / len * 3.5f) + phase)
-            val a = (0.45f * baseAmp * env * (0.35f + 0.65f * wave)).coerceAtMost(0.85f)
+            val a = (0.6f * baseAmp * env * (0.35f + 0.65f * wave) * strength).coerceAtMost(0.9f)
             if (a <= 0.012f) continue
-            val r = (0.5f + 1.0f * wave * env) * p.scale
+            val r = (0.6f + 1.2f * wave * env) * p.scale
             dot(scope, if (wave > 0.72f) brightDot else warmDot, p.x, p.y, r, a, bright = wave > 0.85f)
         }
         // 亮头
         val hp = scene.signalProj(i, 0f)
-        dot(scope, brightDot, hp.x, hp.y, 1.0f * hp.scale, 0.75f * baseAmp, bright = true)
+        dot(scope, warmDot, hp.x, hp.y, 2.6f * hp.scale, 0.16f * baseAmp * strength, bright = false)
+        dot(scope, brightDot, hp.x, hp.y, 1.2f * hp.scale, 0.85f * baseAmp * strength, bright = true)
     }
 
     // （涟漪式冲击波圆环已移除——节拍响应改由神经脉冲亮度波与光点闪烁表达）

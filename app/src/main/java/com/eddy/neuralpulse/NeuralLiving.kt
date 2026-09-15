@@ -143,19 +143,22 @@ class NeuralLivingScene {
     private var unit = 0f
 
     // ---- 神经脉冲信号：沿边逐跳传播的相电流（NeuralPulse 新增） ----
-    // 每个信号是一段"电流包"：包络内含若干波峰，整体沿边流动，到节点后逐跳路由
+    // 每个信号是一段"电流包"：包络内含若干波峰，整体沿边流动，到节点后逐跳路由。
+    // 生命周期很长：跑十几到几十个节点，亮度随路程缓慢衰减，最后才消散。
     private class Signal {
         var edge = 0
         var from = 0
         var u = 0f        // 头部位置 0..1
         var hops = 0
-        var speed = 0.6f
+        var maxHops = 40
+        var speed = 1.2f
         var length = 0.3f // 电流包长度（u 单位）
         var phase = 0f    // 内部波峰相位
+        var strength = 1f // 亮度衰减系数：每跳×0.88~0.98
         var alive = false
     }
 
-    private val SIGNAL_MAX = 14
+    private val SIGNAL_MAX = 30
     private val signals = Array(SIGNAL_MAX) { Signal() }
     private var nodeEdges: Array<IntArray> = arrayOf()
     private var spawnAccum = 0f
@@ -190,9 +193,11 @@ class NeuralLivingScene {
         s.from = if (rand() < 0.5f) edges[s.edge * 2] else edges[s.edge * 2 + 1]
         s.u = 0f
         s.hops = 0
-        s.speed = 0.4f + rand() * 0.45f
+        s.maxHops = 12 + (rand() * 46).toInt()   // 一生跑 12~58 个节点段
+        s.speed = 0.9f + rand() * 0.9f
         s.length = 0.18f + rand() * 0.3f
         s.phase = rand() * TAU
+        s.strength = 1f
         s.alive = true
     }
 
@@ -219,8 +224,10 @@ class NeuralLivingScene {
                 val arrived = otherEnd(s.edge, s.from)
                 s.from = arrived
                 s.hops++
+                // 亮度随路程缓慢衰减：跑十几到几十个节点后才消散
+                s.strength *= 0.88f + rand() * 0.10f
                 val opts = nodeEdges[arrived]
-                if (s.hops >= 2 + (rand() * 2.4f).toInt() || opts.isEmpty()) {
+                if (s.hops >= s.maxHops || s.strength < 0.14f || opts.isEmpty()) {
                     s.alive = false
                 } else {
                     var next = opts[(rand() * opts.size).toInt().coerceIn(0, opts.size - 1)]
@@ -239,6 +246,7 @@ class NeuralLivingScene {
     fun signalHeadU(i: Int) = signals[i].u
     fun signalLength(i: Int) = signals[i].length
     fun signalPhase(i: Int) = signals[i].phase
+    fun signalStrength(i: Int) = signals[i].strength
 
     /** 诊断用：倾倒全部信号状态。 */
     fun dumpSignals(): String = buildString {
